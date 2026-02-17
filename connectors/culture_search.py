@@ -311,11 +311,18 @@ class CultureSearchConnector(BaseConnector):
         except Exception as e:
             self.logger.warning("trending_searches_error", market=market, error=str(e))
 
-        # Fetch category-specific rising queries
+        # Fetch category-specific rising queries using market-relevant seed terms
+        market_seeds = {
+            "NG": ["afrobeats", "naija", "lagos"],
+            "KE": ["nairobi", "kenya music", "gengetone"],
+            "GH": ["ghana music", "accra", "highlife"],
+            "ZA": ["amapiano", "johannesburg", "south africa music"],
+        }
+
         for category_name, category_id in CATEGORY_IDS.items():
             try:
-                # Use a common seed term to get category-filtered results
-                seed_terms = ["music", "trending", "viral"]
+                # Use market-specific seed terms for better results
+                seed_terms = market_seeds.get(market, ["africa", "trending"])
 
                 await loop.run_in_executor(
                     None,
