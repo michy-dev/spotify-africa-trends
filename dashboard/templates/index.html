@@ -187,9 +187,10 @@
                         </template>
 
                         <template x-for="trend in trends" :key="trend.id">
-                            <div class="bg-white rounded-lg shadow hover:shadow-md transition-shadow cursor-pointer"
-                                 :class="'risk-' + trend.risk_level + ' priority-' + trend.priority_level"
-                                 @click="window.location.href='/trend/' + trend.id">
+                            <a :href="trend.source_url || ('https://www.google.com/search?q=' + encodeURIComponent(trend.title))"
+                               target="_blank"
+                               class="block bg-white rounded-lg shadow hover:shadow-md transition-shadow cursor-pointer"
+                               :class="'risk-' + trend.risk_level + ' priority-' + trend.priority_level">
                                 <div class="p-4">
                                     <div class="flex items-start justify-between mb-2">
                                         <div class="flex-1">
@@ -221,7 +222,7 @@
                                         </ul>
                                     </div>
                                 </div>
-                            </div>
+                            </a>
                         </template>
                     </div>
                 </template>
@@ -263,11 +264,14 @@
                         </template>
 
                         <template x-for="spike in artistSpikes" :key="spike.id">
-                            <div class="bg-white rounded-lg shadow p-4" :class="spike.is_ambiguous ? 'border-l-4 border-yellow-400' : ''">
+                            <a :href="'https://trends.google.com/trends/explore?q=' + encodeURIComponent(spike.artist_name) + '&geo=' + spike.market"
+                               target="_blank"
+                               class="block bg-white rounded-lg shadow p-4 hover:shadow-md transition-shadow"
+                               :class="spike.is_ambiguous ? 'border-l-4 border-yellow-400' : ''">
                                 <div class="flex items-start justify-between">
                                     <div class="flex-1">
                                         <div class="flex items-center space-x-2 mb-2">
-                                            <h3 class="font-semibold text-lg" x-text="spike.artist_name"></h3>
+                                            <h3 class="font-semibold text-lg hover:text-green-600" x-text="spike.artist_name"></h3>
                                             <span class="text-xs px-2 py-1 rounded"
                                                   :class="'confidence-' + spike.confidence"
                                                   x-text="spike.confidence + ' confidence'"></span>
@@ -290,7 +294,7 @@
                                         <canvas :id="'sparkline-' + spike.id" class="sparkline mt-2"></canvas>
                                     </div>
                                 </div>
-                            </div>
+                            </a>
                         </template>
                     </div>
                 </template>
@@ -334,11 +338,14 @@
                         </template>
 
                         <template x-for="search in cultureSearches" :key="search.id">
-                            <div class="bg-white rounded-lg shadow p-4" :class="'risk-' + search.risk_level">
+                            <a :href="'https://www.google.com/search?q=' + encodeURIComponent(search.term + ' ' + search.market)"
+                               target="_blank"
+                               class="block bg-white rounded-lg shadow p-4 hover:shadow-md transition-shadow"
+                               :class="'risk-' + search.risk_level">
                                 <div class="flex items-start justify-between">
                                     <div class="flex-1">
                                         <div class="flex items-center space-x-2 mb-2">
-                                            <h3 class="font-semibold text-lg" x-text="search.term"></h3>
+                                            <h3 class="font-semibold text-lg hover:text-green-600" x-text="search.term"></h3>
                                             <span class="text-xs px-2 py-1 rounded"
                                                   :class="'sensitivity-' + search.sensitivity_tag"
                                                   x-text="search.sensitivity_tag.replace('_', '/')"></span>
@@ -355,7 +362,7 @@
                                         <div class="text-xs text-gray-500">rise</div>
                                     </div>
                                 </div>
-                            </div>
+                            </a>
                         </template>
                     </div>
                 </template>
@@ -451,9 +458,18 @@
                             <div class="bg-white rounded-lg shadow overflow-hidden">
                                 <div class="bg-gradient-to-r from-green-500 to-green-600 px-4 py-3">
                                     <div class="flex items-center justify-between">
-                                        <h3 class="font-bold text-white" x-text="card.hook"></h3>
-                                        <span class="text-xs px-2 py-1 rounded bg-white/20 text-white"
-                                              x-text="card.confidence + ' confidence'"></span>
+                                        <a :href="'https://www.google.com/search?q=' + encodeURIComponent(card.hook)"
+                                           target="_blank"
+                                           class="font-bold text-white hover:underline" x-text="card.hook"></a>
+                                        <div class="flex items-center space-x-2">
+                                            <a :href="'https://trends.google.com/trends/explore?q=' + encodeURIComponent(card.hook.split(' ').slice(0, 3).join(' ')) + '&geo=' + card.market"
+                                               target="_blank"
+                                               class="text-xs px-2 py-1 rounded bg-white/30 text-white hover:bg-white/40">
+                                                View Trends
+                                            </a>
+                                            <span class="text-xs px-2 py-1 rounded bg-white/20 text-white"
+                                                  x-text="card.confidence + ' confidence'"></span>
+                                        </div>
                                     </div>
                                 </div>
                                 <div class="p-4 space-y-4">
@@ -580,11 +596,13 @@
                         </div>
                         <div class="divide-y">
                             <template x-for="risk in risks.high_risk?.slice(0, 5) || []" :key="risk.id">
-                                <a :href="'/trend/' + risk.id" class="block p-3 hover:bg-red-50">
+                                <a :href="risk.source_url || ('https://www.google.com/search?q=' + encodeURIComponent(risk.title))"
+                                   target="_blank"
+                                   class="block p-3 hover:bg-red-50">
                                     <div class="flex items-start">
                                         <span class="text-red-500 mr-2">!</span>
                                         <div>
-                                            <p class="text-sm font-medium" x-text="risk.title.substring(0, 60) + '...'"></p>
+                                            <p class="text-sm font-medium hover:text-green-600" x-text="risk.title.substring(0, 60) + '...'"></p>
                                             <p class="text-xs text-gray-500" x-text="risk.market"></p>
                                         </div>
                                     </div>
