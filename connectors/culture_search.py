@@ -17,11 +17,21 @@ from storage.base import CultureSearch, SensitivityTag
 logger = structlog.get_logger()
 
 # Market code to Google Trends geo mapping
+# For trending_searches: use country names (lowercase with underscores)
+# For interest_over_time: use country codes
 MARKET_GEO_MAP = {
     "ZA": "ZA",
     "NG": "NG",
     "KE": "KE",
     "GH": "GH",
+}
+
+# Pytrends trending_searches expects country names
+MARKET_TRENDING_MAP = {
+    "ZA": "south_africa",
+    "NG": "nigeria",
+    "KE": "kenya",
+    "GH": "ghana",
 }
 
 # Google Trends category IDs
@@ -252,14 +262,20 @@ class CultureSearchConnector(BaseConnector):
         """Fetch culture searches for a single market."""
         searches = []
         geo = MARKET_GEO_MAP[market]
+        trending_pn = MARKET_TRENDING_MAP.get(market)
         seen_terms: Set[str] = set()
+
+        # Skip if market not supported for trending searches
+        if not trending_pn:
+            self.logger.warning("market_not_supported_for_trending", market=market)
+            return searches
 
         # Fetch trending searches
         try:
             loop = asyncio.get_event_loop()
             trending = await loop.run_in_executor(
                 None,
-                lambda: pytrends.trending_searches(pn=geo.lower())
+                lambda: pytrends.trending_searches(pn=trending_pn)
             )
 
             if trending is not None and not trending.empty:
