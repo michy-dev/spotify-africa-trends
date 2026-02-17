@@ -13,6 +13,21 @@ A daily-updating trend monitoring and intelligence platform for Spotify Sub-Saha
 - **Daily digest**: Markdown and HTML reports for email distribution
 - **Web dashboard**: Fast, filterable interface optimized for comms decision-making
 
+### Trend-Jack Intelligence
+
+Enhanced modules for real-time trend-jacking opportunities:
+
+- **Artist Spikes**: Detect artist search interest spikes with sparkline charts, spike scores (0-100), and "why spiking" explanations
+- **Culture Searches**: Rising culture terms with sensitivity tags (Music/Fashion/Sport/Film-TV/Meme/Celebrity/Politics)
+- **Style Signals**: RSS aggregation from streetwear/fashion sources (Highsnobiety, Hypebeast, Nataal, etc.)
+- **Pitch Cards**: Actionable opportunities combining all signals with:
+  - Hook (headline-style opener)
+  - Why Now (supporting signals)
+  - Spotify Angle (playlist/podcast/editorial opportunity)
+  - Next Steps (who to contact, what to prep)
+  - Risks (sensitivities to consider)
+  - Confidence level (High/Medium/Low)
+
 ## Quick Start
 
 ### Prerequisites
@@ -60,6 +75,9 @@ python main.py health-check
 
 # Generate daily digest
 python main.py generate-digest
+
+# Refresh trend-jack intelligence
+python main.py run-trendjack
 ```
 
 ### Scheduling Daily Runs
@@ -226,6 +244,17 @@ The dashboard exposes a REST API:
 | `GET /api/filters` | Get available filter options |
 | `POST /api/pipeline/run` | Trigger pipeline manually |
 | `GET /api/health` | Health check |
+
+#### Trend-Jack Endpoints
+
+| Endpoint | Description |
+|----------|-------------|
+| `GET /api/artist-spikes/{market}` | Artist search spikes with sparklines |
+| `GET /api/culture-searches/{market}` | Rising culture searches |
+| `GET /api/style-signals` | Streetwear/fashion signals |
+| `GET /api/pitch-cards/{market}` | Generated pitch cards |
+| `GET /api/data-health` | Module health status |
+| `POST /api/trendjack/refresh?secret=` | Trigger trend-jack refresh |
 
 ### Filtering Trends
 
