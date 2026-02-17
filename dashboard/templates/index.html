@@ -1,0 +1,848 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Spotify Africa Comms Trends Dashboard</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/alpinejs@3.x.x/dist/cdn.min.js" defer></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+    <style>
+        [x-cloak] { display: none !important; }
+        .action-escalate { background-color: #dc2626; color: white; }
+        .action-engage { background-color: #059669; color: white; }
+        .action-partner { background-color: #7c3aed; color: white; }
+        .action-monitor { background-color: #6b7280; color: white; }
+        .action-avoid { background-color: #f59e0b; color: black; }
+        .risk-high { border-left: 4px solid #dc2626; }
+        .risk-medium { border-left: 4px solid #f59e0b; }
+        .risk-low { border-left: 4px solid #10b981; }
+        .priority-high { background-color: #fef2f2; }
+        .priority-medium { background-color: #fffbeb; }
+        .priority-low { background-color: #f0fdf4; }
+        .tab-active { border-bottom: 2px solid #1DB954; color: #1DB954; }
+        .sparkline { width: 80px; height: 24px; }
+        .confidence-high { background-color: #dcfce7; color: #166534; }
+        .confidence-medium { background-color: #fef9c3; color: #854d0e; }
+        .confidence-low { background-color: #fee2e2; color: #991b1b; }
+        .sensitivity-music { background-color: #dbeafe; color: #1e40af; }
+        .sensitivity-fashion { background-color: #f3e8ff; color: #7c3aed; }
+        .sensitivity-sport { background-color: #dcfce7; color: #166534; }
+        .sensitivity-film_tv { background-color: #fce7f3; color: #be185d; }
+        .sensitivity-meme { background-color: #fed7aa; color: #c2410c; }
+        .sensitivity-celebrity { background-color: #e0e7ff; color: #4338ca; }
+        .sensitivity-politics { background-color: #fee2e2; color: #991b1b; }
+        .health-ok { background-color: #dcfce7; color: #166534; }
+        .health-degraded { background-color: #fef9c3; color: #854d0e; }
+        .health-down { background-color: #fee2e2; color: #991b1b; }
+    </style>
+</head>
+<body class="bg-gray-50 min-h-screen" x-data="dashboard()">
+    <!-- Header -->
+    <header class="bg-black text-white shadow-lg">
+        <div class="max-w-7xl mx-auto px-4 py-4">
+            <div class="flex items-center justify-between">
+                <div class="flex items-center space-x-4">
+                    <div class="w-8 h-8 bg-green-500 rounded-full flex items-center justify-center">
+                        <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
+                            <path d="M12 0C5.4 0 0 5.4 0 12s5.4 12 12 12 12-5.4 12-12S18.66 0 12 0zm5.521 17.34c-.24.359-.66.48-1.021.24-2.82-1.74-6.36-2.101-10.561-1.141-.418.122-.779-.179-.899-.539-.12-.421.18-.78.54-.9 4.56-1.021 8.52-.6 11.64 1.32.42.18.479.659.301 1.02zm1.44-3.3c-.301.42-.841.6-1.262.3-3.239-1.98-8.159-2.58-11.939-1.38-.479.12-1.02-.12-1.14-.6-.12-.48.12-1.021.6-1.141C9.6 9.9 15 10.561 18.72 12.84c.361.181.54.78.241 1.2zm.12-3.36C15.24 8.4 8.82 8.16 5.16 9.301c-.6.179-1.2-.181-1.38-.721-.18-.601.18-1.2.72-1.381 4.26-1.26 11.28-1.02 15.721 1.621.539.3.719 1.02.419 1.56-.299.421-1.02.599-1.559.3z"/>
+                        </svg>
+                    </div>
+                    <div>
+                        <h1 class="text-xl font-bold">Africa Comms Trends</h1>
+                        <p class="text-sm text-gray-400">Real-time intelligence for Spotify SSA</p>
+                    </div>
+                </div>
+                <div class="flex items-center space-x-4">
+                    <div class="text-right text-sm">
+                        <p class="text-gray-400">Last updated</p>
+                        <p x-text="stats.last_updated ? new Date(stats.last_updated).toLocaleString() : 'Not yet'"></p>
+                    </div>
+                    <button @click="refreshData()" class="bg-green-500 hover:bg-green-600 px-4 py-2 rounded-lg text-sm font-medium">
+                        Refresh
+                    </button>
+                    <a href="/auth/logout" class="text-gray-400 hover:text-white text-sm">Logout</a>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <!-- Tab Navigation -->
+    <nav class="bg-white border-b shadow-sm">
+        <div class="max-w-7xl mx-auto px-4">
+            <div class="flex space-x-8">
+                <button @click="activeTab = 'trends'"
+                        :class="activeTab === 'trends' ? 'tab-active' : 'text-gray-500 hover:text-gray-700'"
+                        class="py-4 px-1 font-medium text-sm">
+                    All Trends
+                </button>
+                <button @click="activeTab = 'artist-spikes'; fetchArtistSpikes()"
+                        :class="activeTab === 'artist-spikes' ? 'tab-active' : 'text-gray-500 hover:text-gray-700'"
+                        class="py-4 px-1 font-medium text-sm">
+                    Artist Spikes
+                </button>
+                <button @click="activeTab = 'culture'; fetchCultureSearches()"
+                        :class="activeTab === 'culture' ? 'tab-active' : 'text-gray-500 hover:text-gray-700'"
+                        class="py-4 px-1 font-medium text-sm">
+                    Culture
+                </button>
+                <button @click="activeTab = 'style'; fetchStyleSignals()"
+                        :class="activeTab === 'style' ? 'tab-active' : 'text-gray-500 hover:text-gray-700'"
+                        class="py-4 px-1 font-medium text-sm">
+                    Style Signals
+                </button>
+                <button @click="activeTab = 'pitch-cards'; fetchPitchCards()"
+                        :class="activeTab === 'pitch-cards' ? 'tab-active' : 'text-gray-500 hover:text-gray-700'"
+                        class="py-4 px-1 font-medium text-sm">
+                    Pitch Cards
+                </button>
+            </div>
+        </div>
+    </nav>
+
+    <main class="max-w-7xl mx-auto px-4 py-6">
+        <!-- Stats Overview (shown on trends tab) -->
+        <template x-if="activeTab === 'trends'">
+            <div class="grid grid-cols-2 md:grid-cols-5 gap-4 mb-6">
+                <div class="bg-white rounded-lg p-4 shadow">
+                    <p class="text-sm text-gray-500">Total Trends</p>
+                    <p class="text-2xl font-bold" x-text="stats.total_trends || 0"></p>
+                </div>
+                <div class="bg-red-50 rounded-lg p-4 shadow border-l-4 border-red-500">
+                    <p class="text-sm text-gray-500">High Priority</p>
+                    <p class="text-2xl font-bold text-red-600" x-text="stats.by_priority?.high || 0"></p>
+                </div>
+                <div class="bg-red-50 rounded-lg p-4 shadow border-l-4 border-red-500">
+                    <p class="text-sm text-gray-500">High Risk</p>
+                    <p class="text-2xl font-bold text-red-600" x-text="stats.by_risk?.high || 0"></p>
+                </div>
+                <div class="bg-yellow-50 rounded-lg p-4 shadow border-l-4 border-yellow-500">
+                    <p class="text-sm text-gray-500">Need Attention</p>
+                    <p class="text-2xl font-bold text-yellow-600" x-text="(stats.by_risk?.medium || 0)"></p>
+                </div>
+                <div class="bg-green-50 rounded-lg p-4 shadow border-l-4 border-green-500">
+                    <p class="text-sm text-gray-500">Avg Score</p>
+                    <p class="text-2xl font-bold text-green-600" x-text="Math.round(stats.avg_score || 0)"></p>
+                </div>
+            </div>
+        </template>
+
+        <div class="grid grid-cols-1 lg:grid-cols-4 gap-6">
+            <!-- Main Content Area -->
+            <div class="lg:col-span-3">
+                <!-- All Trends Tab -->
+                <template x-if="activeTab === 'trends'">
+                    <div class="space-y-4">
+                        <!-- Filters -->
+                        <div class="bg-white rounded-lg p-4 shadow mb-6">
+                            <div class="flex flex-wrap gap-4 items-center">
+                                <div>
+                                    <label class="block text-sm font-medium text-gray-700 mb-1">Market</label>
+                                    <select x-model="filters.market" @change="fetchTrends()" class="border rounded-lg px-3 py-2 text-sm">
+                                        <option value="">All Markets</option>
+                                        <template x-for="m in filterOptions.markets" :key="m.code">
+                                            <option :value="m.code" x-text="m.name"></option>
+                                        </template>
+                                    </select>
+                                </div>
+                                <div>
+                                    <label class="block text-sm font-medium text-gray-700 mb-1">Topic</label>
+                                    <select x-model="filters.topic" @change="fetchTrends()" class="border rounded-lg px-3 py-2 text-sm">
+                                        <option value="">All Topics</option>
+                                        <template x-for="t in filterOptions.topics" :key="t.key">
+                                            <option :value="t.key" x-text="t.name"></option>
+                                        </template>
+                                    </select>
+                                </div>
+                                <div>
+                                    <label class="block text-sm font-medium text-gray-700 mb-1">Risk Level</label>
+                                    <select x-model="filters.risk_level" @change="fetchTrends()" class="border rounded-lg px-3 py-2 text-sm">
+                                        <option value="">All Risks</option>
+                                        <option value="high">High Risk</option>
+                                        <option value="medium">Medium Risk</option>
+                                        <option value="low">Low Risk</option>
+                                    </select>
+                                </div>
+                                <div class="flex-1"></div>
+                                <button @click="clearFilters()" class="text-sm text-gray-500 hover:text-gray-700">Clear filters</button>
+                            </div>
+                        </div>
+
+                        <h2 class="text-lg font-bold text-gray-800">Top Trends Today</h2>
+
+                        <template x-if="loading">
+                            <div class="bg-white rounded-lg p-8 text-center">
+                                <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-green-500 mx-auto"></div>
+                                <p class="mt-4 text-gray-500">Loading trends...</p>
+                            </div>
+                        </template>
+
+                        <template x-if="!loading && trends.length === 0">
+                            <div class="bg-white rounded-lg p-8 text-center">
+                                <p class="text-gray-500">No trends found. Try running the pipeline or adjusting filters.</p>
+                                <button @click="runPipeline()" class="mt-4 bg-green-500 text-white px-4 py-2 rounded-lg text-sm">
+                                    Run Pipeline Now
+                                </button>
+                            </div>
+                        </template>
+
+                        <template x-for="trend in trends" :key="trend.id">
+                            <div class="bg-white rounded-lg shadow hover:shadow-md transition-shadow cursor-pointer"
+                                 :class="'risk-' + trend.risk_level + ' priority-' + trend.priority_level"
+                                 @click="window.location.href='/trend/' + trend.id">
+                                <div class="p-4">
+                                    <div class="flex items-start justify-between mb-2">
+                                        <div class="flex-1">
+                                            <div class="flex items-center space-x-2 mb-1">
+                                                <span class="text-xs font-medium px-2 py-1 rounded"
+                                                      :class="'action-' + trend.suggested_action.toLowerCase()"
+                                                      x-text="trend.suggested_action"></span>
+                                                <span class="text-xs text-gray-500" x-text="trend.topic_display"></span>
+                                                <span x-show="trend.market" class="text-xs bg-gray-100 px-2 py-1 rounded" x-text="trend.market"></span>
+                                            </div>
+                                            <h3 class="font-semibold text-gray-900" x-text="trend.title"></h3>
+                                        </div>
+                                        <div class="text-right ml-4">
+                                            <div class="text-2xl font-bold" :class="trend.total_score >= 75 ? 'text-red-600' : trend.total_score >= 50 ? 'text-yellow-600' : 'text-gray-600'"
+                                                 x-text="Math.round(trend.total_score)"></div>
+                                            <div class="text-xs text-gray-500">score</div>
+                                        </div>
+                                    </div>
+                                    <p class="text-sm text-gray-700 mb-3" x-text="trend.whats_happening"></p>
+                                    <div class="border-t pt-3 mt-3">
+                                        <p class="text-xs font-semibold text-gray-500 uppercase mb-1">Why it matters</p>
+                                        <ul class="text-sm text-gray-600 space-y-1">
+                                            <template x-for="(bullet, idx) in trend.why_it_matters" :key="idx">
+                                                <li class="flex items-start">
+                                                    <span class="text-green-500 mr-2">•</span>
+                                                    <span x-text="bullet"></span>
+                                                </li>
+                                            </template>
+                                        </ul>
+                                    </div>
+                                </div>
+                            </div>
+                        </template>
+                    </div>
+                </template>
+
+                <!-- Artist Spikes Tab -->
+                <template x-if="activeTab === 'artist-spikes'">
+                    <div class="space-y-4">
+                        <div class="bg-white rounded-lg p-4 shadow mb-4">
+                            <div class="flex gap-4 items-center">
+                                <div>
+                                    <label class="block text-sm font-medium text-gray-700 mb-1">Market</label>
+                                    <select x-model="spikeFilters.market" @change="fetchArtistSpikes()" class="border rounded-lg px-3 py-2 text-sm">
+                                        <option value="NG">Nigeria</option>
+                                        <option value="KE">Kenya</option>
+                                        <option value="GH">Ghana</option>
+                                        <option value="ZA">South Africa</option>
+                                    </select>
+                                </div>
+                                <div>
+                                    <label class="block text-sm font-medium text-gray-700 mb-1">Time Window</label>
+                                    <div class="flex rounded-lg overflow-hidden border">
+                                        <button @click="spikeFilters.time_window = '24h'; fetchArtistSpikes()"
+                                                :class="spikeFilters.time_window === '24h' ? 'bg-green-500 text-white' : 'bg-white'"
+                                                class="px-4 py-2 text-sm font-medium">Last 24h</button>
+                                        <button @click="spikeFilters.time_window = '7d'; fetchArtistSpikes()"
+                                                :class="spikeFilters.time_window === '7d' ? 'bg-green-500 text-white' : 'bg-white'"
+                                                class="px-4 py-2 text-sm font-medium">Last 7 days</button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <h2 class="text-lg font-bold text-gray-800">Artist Search Spikes - <span x-text="spikeFilters.market"></span></h2>
+
+                        <template x-if="artistSpikes.length === 0">
+                            <div class="bg-white rounded-lg p-8 text-center">
+                                <p class="text-gray-500">No artist spikes detected. Run a trend-jack refresh to collect data.</p>
+                            </div>
+                        </template>
+
+                        <template x-for="spike in artistSpikes" :key="spike.id">
+                            <div class="bg-white rounded-lg shadow p-4" :class="spike.is_ambiguous ? 'border-l-4 border-yellow-400' : ''">
+                                <div class="flex items-start justify-between">
+                                    <div class="flex-1">
+                                        <div class="flex items-center space-x-2 mb-2">
+                                            <h3 class="font-semibold text-lg" x-text="spike.artist_name"></h3>
+                                            <span class="text-xs px-2 py-1 rounded"
+                                                  :class="'confidence-' + spike.confidence"
+                                                  x-text="spike.confidence + ' confidence'"></span>
+                                            <span x-show="spike.is_ambiguous" class="text-xs px-2 py-1 rounded bg-yellow-100 text-yellow-800">Ambiguous</span>
+                                        </div>
+                                        <div class="text-sm text-gray-600 space-y-1">
+                                            <template x-for="(reason, idx) in spike.why_spiking" :key="idx">
+                                                <p class="flex items-start">
+                                                    <span class="text-green-500 mr-2">•</span>
+                                                    <span x-text="reason"></span>
+                                                </p>
+                                            </template>
+                                        </div>
+                                    </div>
+                                    <div class="text-right ml-4">
+                                        <div class="text-3xl font-bold"
+                                             :class="spike.spike_score >= 70 ? 'text-red-600' : spike.spike_score >= 40 ? 'text-yellow-600' : 'text-green-600'"
+                                             x-text="Math.round(spike.spike_score)"></div>
+                                        <div class="text-xs text-gray-500">spike score</div>
+                                        <canvas :id="'sparkline-' + spike.id" class="sparkline mt-2"></canvas>
+                                    </div>
+                                </div>
+                            </div>
+                        </template>
+                    </div>
+                </template>
+
+                <!-- Culture Tab -->
+                <template x-if="activeTab === 'culture'">
+                    <div class="space-y-4">
+                        <div class="bg-white rounded-lg p-4 shadow mb-4">
+                            <div class="flex gap-4 items-center">
+                                <div>
+                                    <label class="block text-sm font-medium text-gray-700 mb-1">Market</label>
+                                    <select x-model="cultureFilters.market" @change="fetchCultureSearches()" class="border rounded-lg px-3 py-2 text-sm">
+                                        <option value="NG">Nigeria</option>
+                                        <option value="KE">Kenya</option>
+                                        <option value="GH">Ghana</option>
+                                        <option value="ZA">South Africa</option>
+                                    </select>
+                                </div>
+                                <div>
+                                    <label class="block text-sm font-medium text-gray-700 mb-1">Category</label>
+                                    <select x-model="cultureFilters.sensitivity_tag" @change="fetchCultureSearches()" class="border rounded-lg px-3 py-2 text-sm">
+                                        <option value="">All</option>
+                                        <option value="music">Music</option>
+                                        <option value="fashion">Fashion</option>
+                                        <option value="sport">Sport</option>
+                                        <option value="film_tv">Film/TV</option>
+                                        <option value="meme">Meme</option>
+                                        <option value="celebrity">Celebrity</option>
+                                        <option value="politics">Politics</option>
+                                    </select>
+                                </div>
+                            </div>
+                        </div>
+
+                        <h2 class="text-lg font-bold text-gray-800">Rising Culture Searches - <span x-text="cultureFilters.market"></span></h2>
+
+                        <template x-if="cultureSearches.length === 0">
+                            <div class="bg-white rounded-lg p-8 text-center">
+                                <p class="text-gray-500">No culture searches found.</p>
+                            </div>
+                        </template>
+
+                        <template x-for="search in cultureSearches" :key="search.id">
+                            <div class="bg-white rounded-lg shadow p-4" :class="'risk-' + search.risk_level">
+                                <div class="flex items-start justify-between">
+                                    <div class="flex-1">
+                                        <div class="flex items-center space-x-2 mb-2">
+                                            <h3 class="font-semibold text-lg" x-text="search.term"></h3>
+                                            <span class="text-xs px-2 py-1 rounded"
+                                                  :class="'sensitivity-' + search.sensitivity_tag"
+                                                  x-text="search.sensitivity_tag.replace('_', '/')"></span>
+                                            <span x-show="search.is_cross_market" class="text-xs px-2 py-1 rounded bg-purple-100 text-purple-800">
+                                                Cross-market
+                                            </span>
+                                        </div>
+                                        <div x-show="search.is_cross_market" class="text-sm text-gray-600">
+                                            Also trending in: <span x-text="search.markets_present.join(', ')"></span>
+                                        </div>
+                                    </div>
+                                    <div class="text-right ml-4">
+                                        <div class="text-2xl font-bold text-green-600">+<span x-text="Math.round(search.rise_percentage)"></span>%</div>
+                                        <div class="text-xs text-gray-500">rise</div>
+                                    </div>
+                                </div>
+                            </div>
+                        </template>
+                    </div>
+                </template>
+
+                <!-- Style Signals Tab -->
+                <template x-if="activeTab === 'style'">
+                    <div class="space-y-4">
+                        <div class="bg-white rounded-lg p-4 shadow mb-4">
+                            <div class="flex gap-4 items-center">
+                                <div>
+                                    <label class="block text-sm font-medium text-gray-700 mb-1">Country Relevance</label>
+                                    <select x-model="styleFilters.country" @change="fetchStyleSignals()" class="border rounded-lg px-3 py-2 text-sm">
+                                        <option value="">All</option>
+                                        <option value="NG">Nigeria</option>
+                                        <option value="KE">Kenya</option>
+                                        <option value="GH">Ghana</option>
+                                        <option value="ZA">South Africa</option>
+                                    </select>
+                                </div>
+                                <div>
+                                    <label class="block text-sm font-medium text-gray-700 mb-1">Max Risk</label>
+                                    <select x-model="styleFilters.max_risk" @change="fetchStyleSignals()" class="border rounded-lg px-3 py-2 text-sm">
+                                        <option value="medium">Low + Medium only</option>
+                                        <option value="high">Include High Risk</option>
+                                    </select>
+                                </div>
+                            </div>
+                        </div>
+
+                        <h2 class="text-lg font-bold text-gray-800">Streetwear & Style Signals</h2>
+
+                        <template x-if="styleSignals.length === 0">
+                            <div class="bg-white rounded-lg p-8 text-center">
+                                <p class="text-gray-500">No style signals found.</p>
+                            </div>
+                        </template>
+
+                        <template x-for="signal in styleSignals" :key="signal.id">
+                            <div class="bg-white rounded-lg shadow p-4" :class="'risk-' + signal.risk_level">
+                                <div class="flex items-start justify-between">
+                                    <div class="flex-1">
+                                        <div class="flex items-center space-x-2 mb-2">
+                                            <span class="text-xs text-gray-500" x-text="signal.source"></span>
+                                            <span class="text-xs text-gray-400" x-text="new Date(signal.publish_date).toLocaleDateString()"></span>
+                                        </div>
+                                        <h3 class="font-semibold mb-2">
+                                            <a :href="signal.source_url" target="_blank" class="hover:text-green-600" x-text="signal.headline"></a>
+                                        </h3>
+                                        <p class="text-sm text-gray-600 mb-2" x-text="signal.summary"></p>
+                                        <div class="flex flex-wrap gap-1">
+                                            <template x-for="tag in signal.spotify_tags" :key="tag">
+                                                <span class="text-xs px-2 py-1 rounded bg-green-100 text-green-800" x-text="tag.replace('_', ' ')"></span>
+                                            </template>
+                                        </div>
+                                    </div>
+                                    <div class="ml-4 flex flex-wrap gap-1">
+                                        <template x-for="country in signal.country_relevance" :key="country">
+                                            <span class="text-xs px-2 py-1 rounded bg-gray-100" x-text="country"></span>
+                                        </template>
+                                    </div>
+                                </div>
+                            </div>
+                        </template>
+                    </div>
+                </template>
+
+                <!-- Pitch Cards Tab -->
+                <template x-if="activeTab === 'pitch-cards'">
+                    <div class="space-y-4">
+                        <div class="bg-white rounded-lg p-4 shadow mb-4">
+                            <div class="flex gap-4 items-center">
+                                <div>
+                                    <label class="block text-sm font-medium text-gray-700 mb-1">Market</label>
+                                    <select x-model="pitchFilters.market" @change="fetchPitchCards()" class="border rounded-lg px-3 py-2 text-sm">
+                                        <option value="NG">Nigeria</option>
+                                        <option value="KE">Kenya</option>
+                                        <option value="GH">Ghana</option>
+                                        <option value="ZA">South Africa</option>
+                                    </select>
+                                </div>
+                            </div>
+                        </div>
+
+                        <h2 class="text-lg font-bold text-gray-800">Trend-Jack Pitch Cards - <span x-text="pitchFilters.market"></span></h2>
+
+                        <template x-if="pitchCards.length === 0">
+                            <div class="bg-white rounded-lg p-8 text-center">
+                                <p class="text-gray-500">No pitch cards generated. Run a trend-jack refresh to generate cards.</p>
+                            </div>
+                        </template>
+
+                        <template x-for="card in pitchCards" :key="card.id">
+                            <div class="bg-white rounded-lg shadow overflow-hidden">
+                                <div class="bg-gradient-to-r from-green-500 to-green-600 px-4 py-3">
+                                    <div class="flex items-center justify-between">
+                                        <h3 class="font-bold text-white" x-text="card.hook"></h3>
+                                        <span class="text-xs px-2 py-1 rounded bg-white/20 text-white"
+                                              x-text="card.confidence + ' confidence'"></span>
+                                    </div>
+                                </div>
+                                <div class="p-4 space-y-4">
+                                    <div>
+                                        <h4 class="text-sm font-semibold text-gray-500 uppercase mb-2">Why Now</h4>
+                                        <ul class="text-sm space-y-1">
+                                            <template x-for="(reason, idx) in card.why_now" :key="idx">
+                                                <li class="flex items-start">
+                                                    <span class="text-green-500 mr-2">•</span>
+                                                    <span x-text="reason"></span>
+                                                </li>
+                                            </template>
+                                        </ul>
+                                    </div>
+                                    <div>
+                                        <h4 class="text-sm font-semibold text-gray-500 uppercase mb-2">Spotify Angle</h4>
+                                        <p class="text-sm" x-text="card.spotify_angle"></p>
+                                    </div>
+                                    <div>
+                                        <h4 class="text-sm font-semibold text-gray-500 uppercase mb-2">Next Steps</h4>
+                                        <ul class="text-sm space-y-1">
+                                            <template x-for="(step, idx) in card.next_steps" :key="idx">
+                                                <li class="flex items-start">
+                                                    <span class="text-blue-500 mr-2" x-text="(idx + 1) + '.'"></span>
+                                                    <span x-text="step"></span>
+                                                </li>
+                                            </template>
+                                        </ul>
+                                    </div>
+                                    <div class="bg-red-50 rounded-lg p-3">
+                                        <h4 class="text-sm font-semibold text-red-800 uppercase mb-2">Risks</h4>
+                                        <ul class="text-sm text-red-700 space-y-1">
+                                            <template x-for="(risk, idx) in card.risks" :key="idx">
+                                                <li class="flex items-start">
+                                                    <span class="mr-2">!</span>
+                                                    <span x-text="risk"></span>
+                                                </li>
+                                            </template>
+                                        </ul>
+                                    </div>
+                                </div>
+                            </div>
+                        </template>
+                    </div>
+                </template>
+            </div>
+
+            <!-- Sidebar -->
+            <div class="space-y-6">
+                <!-- Data Health Widget -->
+                <div class="bg-white rounded-lg shadow">
+                    <div class="p-4 border-b">
+                        <h3 class="font-bold text-gray-800">Data Health</h3>
+                    </div>
+                    <div class="p-4 space-y-2">
+                        <template x-for="(module, name) in dataHealth.modules || {}" :key="name">
+                            <div class="flex items-center justify-between text-sm">
+                                <span class="capitalize" x-text="name.replace('_', ' ')"></span>
+                                <div class="flex items-center space-x-2">
+                                    <span class="text-xs px-2 py-1 rounded"
+                                          :class="'health-' + module.status"
+                                          x-text="module.status"></span>
+                                </div>
+                            </div>
+                        </template>
+                        <template x-if="!dataHealth.modules || Object.keys(dataHealth.modules).length === 0">
+                            <p class="text-sm text-gray-500">No health data</p>
+                        </template>
+                    </div>
+                </div>
+
+                <!-- What To Do Now (shown on trends tab) -->
+                <template x-if="activeTab === 'trends'">
+                    <div class="bg-white rounded-lg shadow">
+                        <div class="p-4 border-b">
+                            <h3 class="font-bold text-gray-800">What To Do Now</h3>
+                        </div>
+                        <div class="p-4 space-y-3">
+                            <div class="flex items-center justify-between">
+                                <span class="flex items-center">
+                                    <span class="w-3 h-3 rounded-full bg-red-500 mr-2"></span>
+                                    Escalate
+                                </span>
+                                <span class="font-bold" x-text="actions.counts?.escalate || 0"></span>
+                            </div>
+                            <div class="flex items-center justify-between">
+                                <span class="flex items-center">
+                                    <span class="w-3 h-3 rounded-full bg-green-500 mr-2"></span>
+                                    Engage
+                                </span>
+                                <span class="font-bold" x-text="actions.counts?.engage || 0"></span>
+                            </div>
+                            <div class="flex items-center justify-between">
+                                <span class="flex items-center">
+                                    <span class="w-3 h-3 rounded-full bg-purple-500 mr-2"></span>
+                                    Partner
+                                </span>
+                                <span class="font-bold" x-text="actions.counts?.partner || 0"></span>
+                            </div>
+                            <div class="flex items-center justify-between">
+                                <span class="flex items-center">
+                                    <span class="w-3 h-3 rounded-full bg-yellow-500 mr-2"></span>
+                                    Avoid
+                                </span>
+                                <span class="font-bold" x-text="actions.counts?.avoid || 0"></span>
+                            </div>
+                            <div class="flex items-center justify-between">
+                                <span class="flex items-center">
+                                    <span class="w-3 h-3 rounded-full bg-gray-500 mr-2"></span>
+                                    Monitor
+                                </span>
+                                <span class="font-bold" x-text="actions.counts?.monitor || 0"></span>
+                            </div>
+                        </div>
+                    </div>
+                </template>
+
+                <!-- Risks & Sensitivities -->
+                <template x-if="activeTab === 'trends'">
+                    <div class="bg-white rounded-lg shadow">
+                        <div class="p-4 border-b bg-red-50">
+                            <h3 class="font-bold text-red-800">Risks & Sensitivities</h3>
+                            <p class="text-sm text-red-600">Items needing legal/policy review</p>
+                        </div>
+                        <div class="divide-y">
+                            <template x-for="risk in risks.high_risk?.slice(0, 5) || []" :key="risk.id">
+                                <a :href="'/trend/' + risk.id" class="block p-3 hover:bg-red-50">
+                                    <div class="flex items-start">
+                                        <span class="text-red-500 mr-2">!</span>
+                                        <div>
+                                            <p class="text-sm font-medium" x-text="risk.title.substring(0, 60) + '...'"></p>
+                                            <p class="text-xs text-gray-500" x-text="risk.market"></p>
+                                        </div>
+                                    </div>
+                                </a>
+                            </template>
+                            <template x-if="!risks.high_risk?.length">
+                                <p class="p-4 text-sm text-gray-500">No high-risk items detected</p>
+                            </template>
+                        </div>
+                    </div>
+                </template>
+
+                <!-- By Market -->
+                <template x-if="activeTab === 'trends'">
+                    <div class="bg-white rounded-lg shadow">
+                        <div class="p-4 border-b">
+                            <h3 class="font-bold text-gray-800">By Market</h3>
+                        </div>
+                        <div class="p-4 space-y-2">
+                            <template x-for="(data, market) in markets.markets || {}" :key="market">
+                                <div class="flex items-center justify-between text-sm">
+                                    <span x-text="market"></span>
+                                    <div class="flex items-center space-x-2">
+                                        <span x-show="data.high_risk > 0" class="text-red-600 text-xs" x-text="data.high_risk + ' risk'"></span>
+                                        <span class="font-medium" x-text="data.total"></span>
+                                    </div>
+                                </div>
+                            </template>
+                        </div>
+                    </div>
+                </template>
+            </div>
+        </div>
+    </main>
+
+    <script>
+        function dashboard() {
+            return {
+                loading: true,
+                activeTab: 'trends',
+                trends: [],
+                stats: {},
+                risks: {},
+                actions: {},
+                markets: {},
+                dataHealth: {},
+                filterOptions: { markets: [], topics: [] },
+                filters: { market: '', topic: '', risk_level: '', action: '' },
+
+                // Trend-jack data
+                artistSpikes: [],
+                cultureSearches: [],
+                styleSignals: [],
+                pitchCards: [],
+
+                // Trend-jack filters
+                spikeFilters: { market: 'NG', time_window: '24h' },
+                cultureFilters: { market: 'NG', sensitivity_tag: '' },
+                styleFilters: { country: '', max_risk: 'medium' },
+                pitchFilters: { market: 'NG' },
+
+                async init() {
+                    await this.loadFilterOptions();
+                    await this.refreshData();
+                    await this.fetchDataHealth();
+                },
+
+                async loadFilterOptions() {
+                    try {
+                        const resp = await fetch('/api/filters');
+                        this.filterOptions = await resp.json();
+                    } catch (e) {
+                        console.error('Failed to load filters:', e);
+                    }
+                },
+
+                async refreshData() {
+                    this.loading = true;
+                    await Promise.all([
+                        this.fetchTrends(),
+                        this.fetchStats(),
+                        this.fetchRisks(),
+                        this.fetchActions(),
+                        this.fetchMarkets(),
+                        this.fetchDataHealth(),
+                    ]);
+                    this.loading = false;
+                },
+
+                async fetchTrends() {
+                    try {
+                        const params = new URLSearchParams();
+                        if (this.filters.market) params.append('market', this.filters.market);
+                        if (this.filters.topic) params.append('topic', this.filters.topic);
+                        if (this.filters.risk_level) params.append('risk_level', this.filters.risk_level);
+                        if (this.filters.action) params.append('action', this.filters.action);
+
+                        const resp = await fetch('/api/trends?' + params.toString());
+                        const data = await resp.json();
+                        this.trends = data.trends || [];
+                    } catch (e) {
+                        console.error('Failed to fetch trends:', e);
+                    }
+                },
+
+                async fetchStats() {
+                    try {
+                        const resp = await fetch('/api/stats');
+                        this.stats = await resp.json();
+                    } catch (e) {
+                        console.error('Failed to fetch stats:', e);
+                    }
+                },
+
+                async fetchRisks() {
+                    try {
+                        const resp = await fetch('/api/risks');
+                        this.risks = await resp.json();
+                    } catch (e) {
+                        console.error('Failed to fetch risks:', e);
+                    }
+                },
+
+                async fetchActions() {
+                    try {
+                        const resp = await fetch('/api/actions');
+                        this.actions = await resp.json();
+                    } catch (e) {
+                        console.error('Failed to fetch actions:', e);
+                    }
+                },
+
+                async fetchMarkets() {
+                    try {
+                        const resp = await fetch('/api/markets');
+                        this.markets = await resp.json();
+                    } catch (e) {
+                        console.error('Failed to fetch markets:', e);
+                    }
+                },
+
+                async fetchDataHealth() {
+                    try {
+                        const resp = await fetch('/api/data-health');
+                        this.dataHealth = await resp.json();
+                    } catch (e) {
+                        console.error('Failed to fetch data health:', e);
+                    }
+                },
+
+                async fetchArtistSpikes() {
+                    try {
+                        const resp = await fetch(`/api/artist-spikes/${this.spikeFilters.market}?time_window=${this.spikeFilters.time_window}`);
+                        const data = await resp.json();
+                        this.artistSpikes = data.spikes || [];
+
+                        // Render sparklines after data loads
+                        this.$nextTick(() => {
+                            this.artistSpikes.forEach(spike => {
+                                this.renderSparkline(spike);
+                            });
+                        });
+                    } catch (e) {
+                        console.error('Failed to fetch artist spikes:', e);
+                    }
+                },
+
+                async fetchCultureSearches() {
+                    try {
+                        let url = `/api/culture-searches/${this.cultureFilters.market}`;
+                        if (this.cultureFilters.sensitivity_tag) {
+                            url += `?sensitivity_tag=${this.cultureFilters.sensitivity_tag}`;
+                        }
+                        const resp = await fetch(url);
+                        const data = await resp.json();
+                        this.cultureSearches = data.searches || [];
+                    } catch (e) {
+                        console.error('Failed to fetch culture searches:', e);
+                    }
+                },
+
+                async fetchStyleSignals() {
+                    try {
+                        const params = new URLSearchParams();
+                        if (this.styleFilters.country) params.append('country_relevance', this.styleFilters.country);
+                        params.append('max_risk', this.styleFilters.max_risk);
+
+                        const resp = await fetch('/api/style-signals?' + params.toString());
+                        const data = await resp.json();
+                        this.styleSignals = data.signals || [];
+                    } catch (e) {
+                        console.error('Failed to fetch style signals:', e);
+                    }
+                },
+
+                async fetchPitchCards() {
+                    try {
+                        const resp = await fetch(`/api/pitch-cards/${this.pitchFilters.market}`);
+                        const data = await resp.json();
+                        this.pitchCards = data.cards || [];
+                    } catch (e) {
+                        console.error('Failed to fetch pitch cards:', e);
+                    }
+                },
+
+                renderSparkline(spike) {
+                    const canvas = document.getElementById('sparkline-' + spike.id);
+                    if (!canvas || !spike.sparkline_data || spike.sparkline_data.length === 0) return;
+
+                    const ctx = canvas.getContext('2d');
+                    new Chart(ctx, {
+                        type: 'line',
+                        data: {
+                            labels: spike.sparkline_data.map((_, i) => i),
+                            datasets: [{
+                                data: spike.sparkline_data,
+                                borderColor: spike.spike_score >= 70 ? '#dc2626' : spike.spike_score >= 40 ? '#d97706' : '#16a34a',
+                                borderWidth: 2,
+                                fill: false,
+                                tension: 0.3,
+                                pointRadius: 0,
+                            }]
+                        },
+                        options: {
+                            responsive: false,
+                            maintainAspectRatio: false,
+                            plugins: { legend: { display: false } },
+                            scales: {
+                                x: { display: false },
+                                y: { display: false }
+                            }
+                        }
+                    });
+                },
+
+                clearFilters() {
+                    this.filters = { market: '', topic: '', risk_level: '', action: '' };
+                    this.fetchTrends();
+                },
+
+                async runPipeline() {
+                    this.loading = true;
+                    try {
+                        const resp = await fetch('/api/pipeline/run', { method: 'POST' });
+                        const data = await resp.json();
+                        if (data.success) {
+                            alert('Pipeline completed! ' + data.trends_processed + ' trends processed.');
+                            await this.refreshData();
+                        } else {
+                            alert('Pipeline failed. Check logs.');
+                        }
+                    } catch (e) {
+                        alert('Error running pipeline: ' + e.message);
+                    }
+                    this.loading = false;
+                }
+            };
+        }
+    </script>
+</body>
+</html>

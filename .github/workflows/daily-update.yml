@@ -1,0 +1,38 @@
+name: Daily Pipeline Update
+
+on:
+  schedule:
+    # Run at 4 AM UTC (6 AM SAST)
+    - cron: '0 4 * * *'
+  workflow_dispatch:  # Allow manual trigger
+
+jobs:
+  update-trends:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Trigger pipeline via API
+        run: |
+          response=$(curl -s -X POST \
+            "https://spotify-africa-trends.fly.dev/api/pipeline/run-async?secret=${{ secrets.PIPELINE_SECRET }}" \
+            -H "Content-Type: application/json")
+          echo "Response: $response"
+          if echo "$response" | grep -q "started"; then
+            echo "Pipeline triggered successfully!"
+          else
+            echo "Failed to trigger pipeline"
+            exit 1
+          fi
+
+      - name: Wait for pipeline to complete
+        run: sleep 120  # Wait 2 minutes for pipeline
+
+      - name: Health check
+        run: |
+          curl -f https://spotify-africa-trends.fly.dev/health || exit 1
+          echo "Dashboard is healthy!"
+
+      - name: Check trends count
+        run: |
+          stats=$(curl -s https://spotify-africa-trends.fly.dev/api/stats)
+          echo "Dashboard stats: $stats"

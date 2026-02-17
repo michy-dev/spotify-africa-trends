@@ -1,0 +1,15 @@
+[Unit]
+Description=Spotify Africa Trends Dashboard
+After=network.target
+
+[Service]
+Type=simple
+User=www-data
+WorkingDirectory=/opt/spotify-africa-trends
+Environment="PATH=/opt/spotify-africa-trends/venv/bin"
+ExecStart=/opt/spotify-africa-trends/venv/bin/uvicorn dashboard.app:app --host 0.0.0.0 --port 8000
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target

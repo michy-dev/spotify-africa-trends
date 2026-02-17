@@ -1,0 +1,14 @@
+# Render Blueprint - Infrastructure as Code
+# Deploy with: https://render.com/deploy
+
+services:
+  - type: web
+    name: spotify-africa-trends
+    runtime: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn dashboard.app:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: PYTHON_VERSION
+        value: "3.11"
+    plan: free
+    healthCheckPath: /health

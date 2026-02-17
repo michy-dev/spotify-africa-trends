@@ -1,0 +1,297 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ trend.title[:50] }} - Spotify Africa Trends</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        .action-escalate { background-color: #dc2626; color: white; }
+        .action-engage { background-color: #059669; color: white; }
+        .action-partner { background-color: #7c3aed; color: white; }
+        .action-monitor { background-color: #6b7280; color: white; }
+        .action-avoid { background-color: #f59e0b; color: black; }
+    </style>
+</head>
+<body class="bg-gray-50 min-h-screen">
+    <!-- Header -->
+    <header class="bg-black text-white shadow-lg">
+        <div class="max-w-6xl mx-auto px-4 py-4">
+            <div class="flex items-center space-x-4">
+                <a href="/" class="text-gray-400 hover:text-white">
+                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/>
+                    </svg>
+                </a>
+                <div>
+                    <p class="text-sm text-gray-400">Trend Detail</p>
+                    <h1 class="text-lg font-bold">{{ trend.title[:80] }}</h1>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <main class="max-w-6xl mx-auto px-4 py-6">
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            <!-- Main Content -->
+            <div class="lg:col-span-2 space-y-6">
+                <!-- Summary Card -->
+                <div class="bg-white rounded-lg shadow p-6">
+                    <div class="flex items-start justify-between mb-4">
+                        <div>
+                            <span class="text-sm font-medium px-3 py-1 rounded action-{{ trend.suggested_action|lower }}">
+                                {{ trend.suggested_action }}
+                            </span>
+                            <span class="ml-2 text-sm text-gray-500">{{ trend.topic_display or trend.topic }}</span>
+                            {% if trend.market %}
+                            <span class="ml-2 text-sm bg-gray-100 px-2 py-1 rounded">{{ trend.market }}</span>
+                            {% endif %}
+                        </div>
+                        <div class="text-right">
+                            <div class="text-4xl font-bold {% if trend.total_score >= 75 %}text-red-600{% elif trend.total_score >= 50 %}text-yellow-600{% else %}text-gray-600{% endif %}">
+                                {{ trend.total_score|round|int }}
+                            </div>
+                            <div class="text-sm text-gray-500">Comms Relevance Score</div>
+                        </div>
+                    </div>
+
+                    <h2 class="text-xl font-bold mb-2">{{ trend.title }}</h2>
+
+                    <div class="bg-gray-50 rounded-lg p-4 mb-4">
+                        <h3 class="text-sm font-semibold text-gray-500 uppercase mb-2">What's Happening</h3>
+                        <p class="text-gray-800">{{ trend.whats_happening }}</p>
+                    </div>
+
+                    <div class="mb-4">
+                        <h3 class="text-sm font-semibold text-gray-500 uppercase mb-2">Why It Matters for Spotify Africa Comms</h3>
+                        <ul class="space-y-2">
+                            {% for bullet in trend.why_it_matters %}
+                            <li class="flex items-start">
+                                <span class="text-green-500 mr-2 mt-1">•</span>
+                                <span>{{ bullet }}</span>
+                            </li>
+                            {% endfor %}
+                        </ul>
+                    </div>
+
+                    <div class="bg-{% if trend.risk_level == 'high' %}red{% elif trend.risk_level == 'medium' %}yellow{% else %}green{% endif %}-50 rounded-lg p-4">
+                        <h3 class="text-sm font-semibold text-gray-500 uppercase mb-2">If This Goes Wrong</h3>
+                        <p class="text-gray-800">{{ trend.if_goes_wrong }}</p>
+                    </div>
+                </div>
+
+                <!-- Timeline Chart -->
+                {% if history %}
+                <div class="bg-white rounded-lg shadow p-6">
+                    <h3 class="font-bold mb-4">Trend Over Time</h3>
+                    <canvas id="trendChart" height="200"></canvas>
+                </div>
+                {% endif %}
+
+                <!-- Source Link -->
+                {% if trend.source_url %}
+                <div class="bg-white rounded-lg shadow p-4">
+                    <h3 class="font-bold mb-2">Source</h3>
+                    <a href="{{ trend.source_url }}" target="_blank" class="text-blue-600 hover:underline break-all">
+                        {{ trend.source_url }}
+                    </a>
+                </div>
+                {% endif %}
+
+                <!-- Entities -->
+                {% if trend.entities %}
+                <div class="bg-white rounded-lg shadow p-6">
+                    <h3 class="font-bold mb-4">Key Entities Detected</h3>
+                    <div class="flex flex-wrap gap-2">
+                        {% for entity_type, names in trend.entities.items() %}
+                            {% for name in names %}
+                            <span class="px-3 py-1 bg-gray-100 rounded-full text-sm">
+                                <span class="text-gray-500">{{ entity_type }}:</span> {{ name }}
+                            </span>
+                            {% endfor %}
+                        {% endfor %}
+                    </div>
+                </div>
+                {% endif %}
+            </div>
+
+            <!-- Sidebar -->
+            <div class="space-y-6">
+                <!-- Score Breakdown -->
+                <div class="bg-white rounded-lg shadow p-6">
+                    <h3 class="font-bold mb-4">Score Breakdown</h3>
+                    <p class="text-sm text-gray-500 mb-4">Why this trend is ranked this way</p>
+
+                    {% set breakdown = trend.score_breakdown %}
+                    {% if breakdown and breakdown.components %}
+                    <div class="space-y-4">
+                        <!-- Velocity -->
+                        <div>
+                            <div class="flex justify-between text-sm mb-1">
+                                <span>Velocity</span>
+                                <span class="font-medium">{{ breakdown.components.velocity.score|round|int }}/100</span>
+                            </div>
+                            <div class="h-2 bg-gray-200 rounded-full">
+                                <div class="h-2 bg-blue-500 rounded-full" style="width: {{ breakdown.components.velocity.score }}%"></div>
+                            </div>
+                            <p class="text-xs text-gray-500 mt-1">{{ breakdown.components.velocity.reason }}</p>
+                        </div>
+
+                        <!-- Reach -->
+                        <div>
+                            <div class="flex justify-between text-sm mb-1">
+                                <span>Reach</span>
+                                <span class="font-medium">{{ breakdown.components.reach.score|round|int }}/100</span>
+                            </div>
+                            <div class="h-2 bg-gray-200 rounded-full">
+                                <div class="h-2 bg-green-500 rounded-full" style="width: {{ breakdown.components.reach.score }}%"></div>
+                            </div>
+                            <p class="text-xs text-gray-500 mt-1">{{ breakdown.components.reach.reason }}</p>
+                        </div>
+
+                        <!-- Market Impact -->
+                        <div>
+                            <div class="flex justify-between text-sm mb-1">
+                                <span>Market Impact</span>
+                                <span class="font-medium">{{ breakdown.components.market_impact.score|round|int }}/100</span>
+                            </div>
+                            <div class="h-2 bg-gray-200 rounded-full">
+                                <div class="h-2 bg-purple-500 rounded-full" style="width: {{ breakdown.components.market_impact.score }}%"></div>
+                            </div>
+                            <p class="text-xs text-gray-500 mt-1">{{ breakdown.components.market_impact.reason }}</p>
+                        </div>
+
+                        <!-- Spotify Adjacency -->
+                        <div>
+                            <div class="flex justify-between text-sm mb-1">
+                                <span>Spotify Adjacency</span>
+                                <span class="font-medium">{{ breakdown.components.spotify_adjacency.score|round|int }}/100</span>
+                            </div>
+                            <div class="h-2 bg-gray-200 rounded-full">
+                                <div class="h-2 bg-green-600 rounded-full" style="width: {{ breakdown.components.spotify_adjacency.score }}%"></div>
+                            </div>
+                            <p class="text-xs text-gray-500 mt-1">{{ breakdown.components.spotify_adjacency.reason }}</p>
+                        </div>
+
+                        <!-- Risk -->
+                        <div>
+                            <div class="flex justify-between text-sm mb-1">
+                                <span>Risk Factor</span>
+                                <span class="font-medium">{{ breakdown.components.risk.score|round|int }}/100</span>
+                            </div>
+                            <div class="h-2 bg-gray-200 rounded-full">
+                                <div class="h-2 bg-red-500 rounded-full" style="width: {{ breakdown.components.risk.score }}%"></div>
+                            </div>
+                            <p class="text-xs text-gray-500 mt-1">{{ breakdown.components.risk.reason }}</p>
+                        </div>
+                    </div>
+                    {% endif %}
+                </div>
+
+                <!-- Metadata -->
+                <div class="bg-white rounded-lg shadow p-6">
+                    <h3 class="font-bold mb-4">Details</h3>
+                    <dl class="space-y-3 text-sm">
+                        <div class="flex justify-between">
+                            <dt class="text-gray-500">Priority</dt>
+                            <dd class="font-medium {% if trend.priority_level == 'high' %}text-red-600{% elif trend.priority_level == 'medium' %}text-yellow-600{% else %}text-green-600{% endif %}">
+                                {{ trend.priority_level|upper }}
+                            </dd>
+                        </div>
+                        <div class="flex justify-between">
+                            <dt class="text-gray-500">Risk Level</dt>
+                            <dd class="font-medium {% if trend.risk_level == 'high' %}text-red-600{% elif trend.risk_level == 'medium' %}text-yellow-600{% else %}text-green-600{% endif %}">
+                                {{ trend.risk_level|upper }}
+                            </dd>
+                        </div>
+                        <div class="flex justify-between">
+                            <dt class="text-gray-500">Confidence</dt>
+                            <dd class="font-medium">{{ trend.confidence|upper }}</dd>
+                        </div>
+                        <div class="flex justify-between">
+                            <dt class="text-gray-500">Source</dt>
+                            <dd class="font-medium">{{ trend.source }}</dd>
+                        </div>
+                        {% if trend.language %}
+                        <div class="flex justify-between">
+                            <dt class="text-gray-500">Language</dt>
+                            <dd class="font-medium">{{ trend.language|upper }}</dd>
+                        </div>
+                        {% endif %}
+                        {% if trend.first_seen %}
+                        <div class="flex justify-between">
+                            <dt class="text-gray-500">First Seen</dt>
+                            <dd class="font-medium">{{ trend.first_seen[:10] }}</dd>
+                        </div>
+                        {% endif %}
+                        <div class="flex justify-between">
+                            <dt class="text-gray-500">Last Updated</dt>
+                            <dd class="font-medium">{{ trend.last_updated[:10] }}</dd>
+                        </div>
+                    </dl>
+                </div>
+
+                <!-- Actions -->
+                <div class="bg-white rounded-lg shadow p-6">
+                    <h3 class="font-bold mb-4">Suggested Actions</h3>
+                    <div class="space-y-2">
+                        {% if trend.suggested_action == 'ESCALATE' %}
+                        <p class="text-sm text-red-700 bg-red-50 p-3 rounded">
+                            <strong>Escalate immediately.</strong> This requires urgent attention from comms leadership. Consider drafting a holding statement.
+                        </p>
+                        {% elif trend.suggested_action == 'ENGAGE' %}
+                        <p class="text-sm text-green-700 bg-green-50 p-3 rounded">
+                            <strong>Engagement opportunity.</strong> Consider social response, content creation, or creator collaboration.
+                        </p>
+                        {% elif trend.suggested_action == 'PARTNER' %}
+                        <p class="text-sm text-purple-700 bg-purple-50 p-3 rounded">
+                            <strong>Partnership potential.</strong> Explore collaboration with artists, creators, or brands involved.
+                        </p>
+                        {% elif trend.suggested_action == 'AVOID' %}
+                        <p class="text-sm text-yellow-700 bg-yellow-50 p-3 rounded">
+                            <strong>Avoid engagement.</strong> Stay away from this topic. Do not associate Spotify with this conversation.
+                        </p>
+                        {% else %}
+                        <p class="text-sm text-gray-700 bg-gray-50 p-3 rounded">
+                            <strong>Monitor only.</strong> Keep watching but no immediate action needed.
+                        </p>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    {% if history %}
+    <script>
+        const ctx = document.getElementById('trendChart').getContext('2d');
+        const history = {{ history|tojson }};
+
+        new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: history.map(h => h.date),
+                datasets: [{
+                    label: 'Score',
+                    data: history.map(h => h.score),
+                    borderColor: 'rgb(34, 197, 94)',
+                    backgroundColor: 'rgba(34, 197, 94, 0.1)',
+                    fill: true,
+                    tension: 0.3,
+                }]
+            },
+            options: {
+                responsive: true,
+                plugins: {
+                    legend: { display: false }
+                },
+                scales: {
+                    y: { beginAtZero: true, max: 100 }
+                }
+            }
+        });
+    </script>
+    {% endif %}
+</body>
+</html>

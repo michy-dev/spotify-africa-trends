@@ -1,0 +1,32 @@
+# fly.toml - Spotify Africa Trends Dashboard
+app = 'spotify-africa-trends'
+primary_region = 'jnb'
+
+[build]
+  dockerfile = 'Dockerfile'
+
+[env]
+  PORT = '8080'
+  DATABASE_PATH = '/data/trends.db'
+  PIPELINE_SECRET = 'spotify-ssa-trends-2024'
+
+[mounts]
+  source = 'spotify_data'
+  destination = '/data'
+
+[http_service]
+  internal_port = 8080
+  force_https = true
+  auto_stop_machines = false
+  auto_start_machines = true
+  min_machines_running = 1
+
+  [http_service.concurrency]
+    type = 'connections'
+    hard_limit = 100
+    soft_limit = 80
+
+[[vm]]
+  cpu_kind = 'shared'
+  cpus = 1
+  memory_mb = 512

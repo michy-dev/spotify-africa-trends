@@ -1,0 +1,53 @@
+name: Daily Pipeline Run
+
+on:
+  schedule:
+    # Run at 6 AM UTC (8 AM SAST / 7 AM WAT)
+    - cron: '0 6 * * *'
+  workflow_dispatch:  # Allow manual trigger
+
+jobs:
+  run-pipeline:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+          python -m spacy download en_core_web_sm
+
+      - name: Run pipeline
+        env:
+          YOUTUBE_API_KEY: ${{ secrets.YOUTUBE_API_KEY }}
+          TWITTER_BEARER_TOKEN: ${{ secrets.TWITTER_BEARER_TOKEN }}
+          REDDIT_CLIENT_ID: ${{ secrets.REDDIT_CLIENT_ID }}
+          REDDIT_CLIENT_SECRET: ${{ secrets.REDDIT_CLIENT_SECRET }}
+        run: |
+          python main.py run-pipeline
+
+      - name: Generate digest
+        run: |
+          python main.py generate-digest
+
+      - name: Upload digest artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: daily-digest-${{ github.run_id }}
+          path: output/
+          retention-days: 30
+
+      - name: Upload database
+        uses: actions/upload-artifact@v4
+        with:
+          name: trends-db-${{ github.run_id }}
+          path: data/trends.db
+          retention-days: 7
