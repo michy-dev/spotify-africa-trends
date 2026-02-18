@@ -552,3 +552,104 @@ class TestStyleSignalDetection:
         text = "Gen Z viral streetwear trend"
         tags = detect_spotify_tags(text)
         assert "youth_culture" in tags or "streetwear" in tags
+
+
+class TestRiskFactorValidator:
+    """Tests for RiskFactorValidator."""
+
+    def test_validate_risk_level_valid(self):
+        validator = RiskFactorValidator()
+        result = validator.validate_risk_level("high")
+        assert result.is_valid
+        assert result.severity == "info"
+
+    def test_validate_risk_level_invalid(self):
+        validator = RiskFactorValidator()
+        result = validator.validate_risk_level("critical")
+        assert not result.is_valid
+        assert result.severity == "error"
+        assert "critical" in result.message
+
+    def test_validate_risk_score_valid(self):
+        validator = RiskFactorValidator()
+        result = validator.validate_risk_score(50.0)
+        assert result.is_valid
+        assert result.severity == "info"
+
+    def test_validate_risk_score_out_of_range(self):
+        validator = RiskFactorValidator()
+        result = validator.validate_risk_score(150.0)
+        assert not result.is_valid
+        assert result.severity == "error"
+        assert "out of range" in result.message
+
+    def test_validate_risk_score_negative(self):
+        validator = RiskFactorValidator()
+        result = validator.validate_risk_score(-10.0)
+        assert not result.is_valid
+
+    def test_validate_risk_consistency_match(self):
+        validator = RiskFactorValidator()
+        # High risk score should match high level
+        result = validator.validate_risk_consistency("high", 80.0)
+        assert result.is_valid
+
+    def test_validate_risk_consistency_mismatch(self):
+        validator = RiskFactorValidator()
+        # Low risk score with high level - inconsistent
+        result = validator.validate_risk_consistency("high", 20.0)
+        assert not result.is_valid
+        assert result.severity == "warning"
+        assert "Inconsistency" in result.message
+
+    def test_get_risk_level_for_score(self):
+        validator = RiskFactorValidator()
+        assert validator.get_risk_level_for_score(80) == "high"
+        assert validator.get_risk_level_for_score(50) == "medium"
+        assert validator.get_risk_level_for_score(20) == "low"
+
+    def test_validate_freshness_fresh(self):
+        validator = RiskFactorValidator()
+        recent = datetime.utcnow() - timedelta(hours=2)
+        result = validator.validate_freshness(recent, threshold_hours=24)
+        assert result.is_valid
+        assert "fresh" in result.message.lower()
+
+    def test_validate_freshness_stale(self):
+        validator = RiskFactorValidator()
+        old = datetime.utcnow() - timedelta(hours=48)
+        result = validator.validate_freshness(old, threshold_hours=24)
+        assert not result.is_valid
+        assert result.severity == "warning"
+        assert "stale" in result.message.lower()
+
+    def test_validate_trend(self):
+        validator = RiskFactorValidator()
+        trend = {
+            "id": "test123",
+            "risk_level": "medium",
+            "risk_score": 50.0,
+            "last_updated": datetime.utcnow().isoformat(),
+        }
+        results = validator.validate_trend(trend)
+        assert len(results) == 4  # risk_level, risk_score, consistency, freshness
+        assert all(r.is_valid for r in results)
+
+    def test_validate_batch(self):
+        validator = RiskFactorValidator()
+        trends = [
+            {"id": "t1", "risk_level": "high", "risk_score": 80.0},
+            {"id": "t2", "risk_level": "low", "risk_score": 10.0},
+            {"id": "t3", "risk_level": "high", "risk_score": 10.0},  # Inconsistent
+        ]
+        result = validator.validate_batch(trends)
+        assert result["total_trends"] == 3
+        assert result["errors"] == 0
+        assert result["warnings"] == 1  # One inconsistency warning
+        assert result["is_valid"]  # Only errors make it invalid
+
+    def test_get_risk_badge_class(self):
+        validator = RiskFactorValidator()
+        assert "red" in validator.get_risk_badge_class("high")
+        assert "amber" in validator.get_risk_badge_class("medium")
+        assert "green" in validator.get_risk_badge_class("low")

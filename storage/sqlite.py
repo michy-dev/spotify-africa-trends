@@ -31,7 +31,20 @@ class SQLiteStorage(BaseStorage):
         sqlite_config = config.get("sqlite", {})
         # Check environment variable first, then config
         import os
-        self.db_path = os.environ.get("DATABASE_PATH") or sqlite_config.get("path", "data/trends.db")
+        import re
+
+        db_path = os.environ.get("DATABASE_PATH")
+        if not db_path:
+            config_path = sqlite_config.get("path", "data/trends.db")
+            # Expand ${VAR:-default} style env vars from YAML
+            match = re.match(r'\$\{(\w+):-([^}]+)\}', config_path)
+            if match:
+                var_name, default = match.groups()
+                db_path = os.environ.get(var_name, default)
+            else:
+                db_path = config_path
+
+        self.db_path = db_path
         self._conn = None
 
     async def initialize(self):
@@ -946,6 +959,31 @@ class SQLiteStorage(BaseStorage):
                 checked_at=datetime.fromisoformat(row_dict["checked_at"]) if row_dict.get("checked_at") else datetime.utcnow(),
             ))
         return health_list
+
+    async def get_module_health(self, module_name: str) -> Optional[DataHealth]:
+        """Get health status for a specific module."""
+        if not self._conn:
+            await self.initialize()
+
+        cursor = await self._conn.execute(
+            "SELECT * FROM data_health WHERE module_name = ?",
+            (module_name,)
+        )
+        row = await cursor.fetchone()
+        if not row:
+            return None
+
+        columns = [d[0] for d in cursor.description]
+        row_dict = dict(zip(columns, row))
+        return DataHealth(
+            module_name=row_dict["module_name"],
+            status=row_dict["status"],
+            last_success=datetime.fromisoformat(row_dict["last_success"]) if row_dict.get("last_success") else None,
+            last_error=row_dict.get("last_error"),
+            item_count=row_dict.get("item_count", 0),
+            freshness_hours=row_dict.get("freshness_hours", 0),
+            checked_at=datetime.fromisoformat(row_dict["checked_at"]) if row_dict.get("checked_at") else datetime.utcnow(),
+        )
 
     async def save_user_session(self, session: UserSession) -> None:
         """Save user session."""
