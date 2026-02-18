@@ -255,7 +255,12 @@
                             </div>
                         </div>
 
-                        <h2 class="text-lg font-bold text-gray-800">Artist Search Spikes - <span x-text="spikeFilters.market"></span></h2>
+                        <div class="flex justify-between items-center">
+                            <h2 class="text-lg font-bold text-gray-800">Artist Search Spikes - <span x-text="spikeFilters.market"></span></h2>
+                            <span x-show="artistSpikesLastUpdated" class="text-sm text-gray-500">
+                                Last updated: <span x-text="artistSpikesLastUpdated ? new Date(artistSpikesLastUpdated).toLocaleString() : 'Never'"></span>
+                            </span>
+                        </div>
 
                         <template x-if="artistSpikes.length === 0">
                             <div class="bg-white rounded-lg p-8 text-center">
@@ -329,7 +334,12 @@
                             </div>
                         </div>
 
-                        <h2 class="text-lg font-bold text-gray-800">Rising Culture Searches - <span x-text="cultureFilters.market"></span></h2>
+                        <div class="flex justify-between items-center">
+                            <h2 class="text-lg font-bold text-gray-800">Rising Culture Searches - <span x-text="cultureFilters.market"></span></h2>
+                            <span x-show="cultureSearchesLastUpdated" class="text-sm text-gray-500">
+                                Last updated: <span x-text="cultureSearchesLastUpdated ? new Date(cultureSearchesLastUpdated).toLocaleString() : 'Never'"></span>
+                            </span>
+                        </div>
 
                         <template x-if="cultureSearches.length === 0">
                             <div class="bg-white rounded-lg p-8 text-center">
@@ -392,7 +402,12 @@
                             </div>
                         </div>
 
-                        <h2 class="text-lg font-bold text-gray-800">Streetwear & Style Signals</h2>
+                        <div class="flex justify-between items-center">
+                            <h2 class="text-lg font-bold text-gray-800">Streetwear & Style Signals</h2>
+                            <span x-show="styleSignalsLastUpdated" class="text-sm text-gray-500">
+                                Last updated: <span x-text="styleSignalsLastUpdated ? new Date(styleSignalsLastUpdated).toLocaleString() : 'Never'"></span>
+                            </span>
+                        </div>
 
                         <template x-if="styleSignals.length === 0">
                             <div class="bg-white rounded-lg p-8 text-center">
@@ -446,7 +461,12 @@
                             </div>
                         </div>
 
-                        <h2 class="text-lg font-bold text-gray-800">Trend-Jack Pitch Cards - <span x-text="pitchFilters.market"></span></h2>
+                        <div class="flex justify-between items-center">
+                            <h2 class="text-lg font-bold text-gray-800">Trend-Jack Pitch Cards - <span x-text="pitchFilters.market"></span></h2>
+                            <span x-show="pitchCardsLastUpdated" class="text-sm text-gray-500">
+                                Last updated: <span x-text="pitchCardsLastUpdated ? new Date(pitchCardsLastUpdated).toLocaleString() : 'Never'"></span>
+                            </span>
+                        </div>
 
                         <template x-if="pitchCards.length === 0">
                             <div class="bg-white rounded-lg p-8 text-center">
@@ -521,14 +541,18 @@
             <div class="space-y-6">
                 <!-- Data Health Widget -->
                 <div class="bg-white rounded-lg shadow">
-                    <div class="p-4 border-b">
+                    <div class="p-4 border-b flex justify-between items-center">
                         <h3 class="font-bold text-gray-800">Data Health</h3>
+                        <span class="text-xs px-2 py-1 rounded"
+                              :class="dataHealth.overall_status === 'ok' ? 'health-ok' : dataHealth.overall_status === 'degraded' ? 'health-degraded' : 'health-down'"
+                              x-text="dataHealth.overall_status || 'unknown'"></span>
                     </div>
                     <div class="p-4 space-y-2">
                         <template x-for="(module, name) in dataHealth.modules || {}" :key="name">
-                            <div class="flex items-center justify-between text-sm">
+                            <div class="flex items-center justify-between text-sm py-1">
                                 <span class="capitalize" x-text="name.replace('_', ' ')"></span>
                                 <div class="flex items-center space-x-2">
+                                    <span class="text-xs text-gray-400" x-text="module.item_count + ' items'"></span>
                                     <span class="text-xs px-2 py-1 rounded"
                                           :class="'health-' + module.status"
                                           x-text="module.status"></span>
@@ -537,6 +561,27 @@
                         </template>
                         <template x-if="!dataHealth.modules || Object.keys(dataHealth.modules).length === 0">
                             <p class="text-sm text-gray-500">No health data</p>
+                        </template>
+
+                        <!-- Risk Validation Summary -->
+                        <template x-if="dataHealth.risk_validation">
+                            <div class="border-t pt-2 mt-2">
+                                <div class="flex items-center justify-between text-sm">
+                                    <span class="font-medium text-gray-700">Risk Validation</span>
+                                    <span class="text-xs px-2 py-1 rounded"
+                                          :class="dataHealth.risk_validation.is_valid ? 'health-ok' : 'health-degraded'"
+                                          x-text="dataHealth.risk_validation.is_valid ? 'valid' : 'issues'"></span>
+                                </div>
+                                <div class="text-xs text-gray-500 mt-1">
+                                    <span x-text="dataHealth.risk_validation.total_trends + ' trends'"></span>
+                                    <template x-if="dataHealth.risk_validation.errors > 0">
+                                        <span class="text-red-600 ml-2" x-text="dataHealth.risk_validation.errors + ' errors'"></span>
+                                    </template>
+                                    <template x-if="dataHealth.risk_validation.warnings > 0">
+                                        <span class="text-amber-600 ml-2" x-text="dataHealth.risk_validation.warnings + ' warnings'"></span>
+                                    </template>
+                                </div>
+                            </div>
                         </template>
                     </div>
                 </div>
@@ -658,6 +703,12 @@
                 styleSignals: [],
                 pitchCards: [],
 
+                // Last updated timestamps for each module
+                artistSpikesLastUpdated: null,
+                cultureSearchesLastUpdated: null,
+                styleSignalsLastUpdated: null,
+                pitchCardsLastUpdated: null,
+
                 // Trend-jack filters
                 spikeFilters: { market: 'NG', time_window: '24h' },
                 cultureFilters: { market: 'NG', sensitivity_tag: '' },
@@ -758,6 +809,7 @@
                         const resp = await fetch(`/api/artist-spikes/${this.spikeFilters.market}?time_window=${this.spikeFilters.time_window}`);
                         const data = await resp.json();
                         this.artistSpikes = data.spikes || [];
+                        this.artistSpikesLastUpdated = data.last_updated;
 
                         // Render sparklines after data loads
                         this.$nextTick(() => {
@@ -779,6 +831,7 @@
                         const resp = await fetch(url);
                         const data = await resp.json();
                         this.cultureSearches = data.searches || [];
+                        this.cultureSearchesLastUpdated = data.last_updated;
                     } catch (e) {
                         console.error('Failed to fetch culture searches:', e);
                     }
@@ -793,6 +846,7 @@
                         const resp = await fetch('/api/style-signals?' + params.toString());
                         const data = await resp.json();
                         this.styleSignals = data.signals || [];
+                        this.styleSignalsLastUpdated = data.last_updated;
                     } catch (e) {
                         console.error('Failed to fetch style signals:', e);
                     }
@@ -803,6 +857,7 @@
                         const resp = await fetch(`/api/pitch-cards/${this.pitchFilters.market}`);
                         const data = await resp.json();
                         this.pitchCards = data.cards || [];
+                        this.pitchCardsLastUpdated = data.last_updated;
                     } catch (e) {
                         console.error('Failed to fetch pitch cards:', e);
                     }

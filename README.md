@@ -320,11 +320,22 @@ CMD ["python", "main.py", "run-server"]
 
 ### Environment Variables
 
-See `.env.example` for all available environment variables. Required for optional connectors:
+See `.env.example` for all available environment variables.
+
+**Required:**
+
+- `PIPELINE_SECRET`: Secret token for triggering refreshes via API (used by GitHub Actions)
+
+**Optional - Authentication:**
+
+- `AUTH_PASSWORD`: Password for dashboard login (leave unset to disable auth)
+
+**Optional - Data Source APIs:**
 
 - `YOUTUBE_API_KEY`: YouTube Data API v3
 - `TWITTER_BEARER_TOKEN`: Twitter API (paid tier)
 - `REDDIT_CLIENT_ID`, `REDDIT_CLIENT_SECRET`: Reddit API (improves rate limits)
+- `NEWS_API_KEY`: News API for "why spiking" explanations
 
 ### PostgreSQL (production)
 

@@ -25,6 +25,14 @@ from monitoring.risk_validator import RiskFactorValidator
 
 logger = structlog.get_logger()
 
+# Refresh status tracking (in-memory for simplicity)
+_refresh_status = {
+    "is_running": False,
+    "started_at": None,
+    "completed_at": None,
+    "last_result": None,
+}
+
 # Load configuration
 CONFIG_PATH = Path(__file__).parent.parent / "config" / "settings.yaml"
 
@@ -496,11 +504,16 @@ def create_app() -> FastAPI:
             time_window=time_window,
             limit=limit,
         )
+        # Get last updated from data health
+        health = await app.state.storage.get_module_health("artist_spikes")
+        last_updated = health.last_success.isoformat() if health and health.last_success else None
+
         return {
             "market": market.upper(),
             "time_window": time_window,
             "spikes": [s.to_dict() for s in spikes],
             "count": len(spikes),
+            "last_updated": last_updated,
         }
 
     @app.get("/api/culture-searches/{market}")
@@ -515,11 +528,15 @@ def create_app() -> FastAPI:
             sensitivity_tag=sensitivity_tag,
             limit=limit,
         )
+        health = await app.state.storage.get_module_health("culture_searches")
+        last_updated = health.last_success.isoformat() if health and health.last_success else None
+
         return {
             "market": market.upper(),
             "sensitivity_tag": sensitivity_tag,
             "searches": [s.to_dict() for s in searches],
             "count": len(searches),
+            "last_updated": last_updated,
         }
 
     @app.get("/api/culture-searches/regional/overlaps")
@@ -543,11 +560,15 @@ def create_app() -> FastAPI:
             max_risk=max_risk,
             limit=limit,
         )
+        health = await app.state.storage.get_module_health("style_signals")
+        last_updated = health.last_success.isoformat() if health and health.last_success else None
+
         return {
             "country_relevance": country_relevance,
             "max_risk": max_risk,
             "signals": [s.to_dict() for s in signals],
             "count": len(signals),
+            "last_updated": last_updated,
         }
 
     @app.get("/api/pitch-cards/{market}")
@@ -560,17 +581,63 @@ def create_app() -> FastAPI:
             market=market.upper(),
             limit=limit,
         )
+        health = await app.state.storage.get_module_health("pitch_cards")
+        last_updated = health.last_success.isoformat() if health and health.last_success else None
+
         return {
             "market": market.upper(),
             "cards": [c.to_dict() for c in cards],
             "count": len(cards),
+            "last_updated": last_updated,
         }
 
     @app.get("/api/data-health")
     async def get_data_health():
-        """Get data health status for all modules."""
+        """Get data health status for all modules with risk validation."""
         health_summary = await app.state.health_monitor.get_health_summary()
+
+        # Add risk validation summary
+        try:
+            trends = await app.state.storage.get_trends(limit=100)
+            trend_dicts = [
+                {
+                    "id": t.id,
+                    "risk_level": t.risk_level,
+                    "risk_score": t.risk_score,
+                    "last_updated": t.last_updated.isoformat() if t.last_updated else None,
+                }
+                for t in trends
+            ]
+            validation = app.state.risk_validator.validate_batch(trend_dicts)
+            health_summary["risk_validation"] = {
+                "total_trends": validation["total_trends"],
+                "errors": validation["errors"],
+                "warnings": validation["warnings"],
+                "is_valid": validation["is_valid"],
+            }
+        except Exception as e:
+            health_summary["risk_validation"] = {
+                "error": str(e),
+                "is_valid": False,
+            }
+
         return health_summary
+
+    @app.get("/api/risk-validation")
+    async def validate_risks(limit: int = Query(100, ge=1, le=500)):
+        """Run risk factor validation on trends."""
+        trends = await app.state.storage.get_trends(limit=limit)
+        trend_dicts = [
+            {
+                "id": t.id,
+                "title": t.title,
+                "risk_level": t.risk_level,
+                "risk_score": t.risk_score,
+                "last_updated": t.last_updated.isoformat() if t.last_updated else None,
+            }
+            for t in trends
+        ]
+        return app.state.risk_validator.validate_batch(trend_dicts)
 
     @app.post("/api/trendjack/refresh")
     async def refresh_trendjack(secret: str = ""):
@@ -581,75 +648,305 @@ def create_app() -> FastAPI:
         if secret != expected_secret:
             raise HTTPException(status_code=403, detail="Invalid secret")
 
+        # Check if already running
+        if _refresh_status["is_running"]:
+            return {
+                "status": "already_running",
+                "started_at": _refresh_status["started_at"].isoformat() if _refresh_status["started_at"] else None,
+                "message": "Trend-jack refresh already in progress"
+            }
+
+        # Mark as running
+        _refresh_status["is_running"] = True
+        _refresh_status["started_at"] = datetime.utcnow()
+        _refresh_status["completed_at"] = None
+        _refresh_status["last_result"] = None
+
         # Run in background
         import asyncio
         asyncio.create_task(run_trendjack_refresh(app.state))
 
-        return {"status": "started", "message": "Trend-jack refresh running in background"}
+        return {
+            "status": "started",
+            "started_at": _refresh_status["started_at"].isoformat(),
+            "message": "Trend-jack refresh running in background. Poll GET /api/trendjack/status for progress."
+        }
+
+    @app.get("/api/trendjack/status")
+    async def get_refresh_status():
+        """Get the status of the last/current trend-jack refresh."""
+        return {
+            "is_running": _refresh_status["is_running"],
+            "started_at": _refresh_status["started_at"].isoformat() if _refresh_status["started_at"] else None,
+            "completed_at": _refresh_status["completed_at"].isoformat() if _refresh_status["completed_at"] else None,
+            "result": _refresh_status["last_result"],
+        }
 
     async def run_trendjack_refresh(state):
-        """Background trend-jack refresh."""
+        """Background trend-jack refresh with detailed tracking."""
         from connectors import ArtistSpikesConnector, CultureSearchConnector, StyleSignalsConnector
         from pipeline.pitch_generator import PitchCardGenerator
 
+        result = {
+            "status": "success",
+            "modules": {},
+            "errors": [],
+            "markets": ["NG", "KE", "GH", "ZA"],
+        }
+
         try:
             config = state.config
-            markets = ["NG", "KE", "GH", "ZA"]
+            markets = result["markets"]
 
-            # Refresh artist spikes
-            spikes_connector = ArtistSpikesConnector(config)
-            all_spikes = []
-            for window in ["24h", "7d"]:
-                spikes = await spikes_connector.fetch_spikes(markets, window)
-                all_spikes.extend(spikes)
-                await state.storage.save_artist_spikes(spikes)
+            # --- Module 1: Artist Spikes ---
+            try:
+                logger.info("trendjack_refresh_module_start", module="artist_spikes")
+                spikes_connector = ArtistSpikesConnector(config)
+                all_spikes = []
+                for window in ["24h", "7d"]:
+                    spikes = await spikes_connector.fetch_spikes(markets, window)
+                    all_spikes.extend(spikes)
+                    await state.storage.save_artist_spikes(spikes)
+                    logger.info("artist_spikes_fetched", window=window, count=len(spikes))
 
-            await state.health_monitor.update_module_health(
-                "artist_spikes", True, len(all_spikes)
-            )
+                await state.health_monitor.update_module_health(
+                    "artist_spikes", True, len(all_spikes)
+                )
+                result["modules"]["artist_spikes"] = {
+                    "status": "ok",
+                    "fetched": len(all_spikes),
+                    "saved": len(all_spikes),
+                    "by_window": {"24h": len([s for s in all_spikes if s.time_window == "24h"]),
+                                  "7d": len([s for s in all_spikes if s.time_window == "7d"])},
+                }
+                logger.info("trendjack_refresh_module_complete", module="artist_spikes", count=len(all_spikes))
+            except Exception as e:
+                error_msg = f"artist_spikes: {str(e)}"
+                result["modules"]["artist_spikes"] = {"status": "error", "error": str(e)}
+                result["errors"].append(error_msg)
+                logger.error("trendjack_module_error", module="artist_spikes", error=str(e))
+                await state.health_monitor.update_module_health("artist_spikes", False, error_message=str(e))
+                all_spikes = []
 
-            # Refresh culture searches
-            culture_connector = CultureSearchConnector(config)
-            searches = await culture_connector.fetch_searches(markets)
-            await state.storage.save_culture_searches(searches)
-            await state.health_monitor.update_module_health(
-                "culture_searches", True, len(searches)
-            )
+            # --- Module 2: Culture Searches ---
+            try:
+                logger.info("trendjack_refresh_module_start", module="culture_searches")
+                culture_connector = CultureSearchConnector(config)
+                searches = await culture_connector.fetch_searches(markets)
+                await state.storage.save_culture_searches(searches)
 
-            # Refresh style signals
-            style_connector = StyleSignalsConnector(config)
-            signals = await style_connector.fetch_signals(markets)
-            await state.storage.save_style_signals(signals)
-            await state.health_monitor.update_module_health(
-                "style_signals", True, len(signals)
-            )
+                await state.health_monitor.update_module_health(
+                    "culture_searches", True, len(searches)
+                )
+                result["modules"]["culture_searches"] = {
+                    "status": "ok",
+                    "fetched": len(searches),
+                    "saved": len(searches),
+                    "by_market": {m: len([s for s in searches if s.market == m]) for m in markets},
+                }
+                logger.info("trendjack_refresh_module_complete", module="culture_searches", count=len(searches))
+            except Exception as e:
+                error_msg = f"culture_searches: {str(e)}"
+                result["modules"]["culture_searches"] = {"status": "error", "error": str(e)}
+                result["errors"].append(error_msg)
+                logger.error("trendjack_module_error", module="culture_searches", error=str(e))
+                await state.health_monitor.update_module_health("culture_searches", False, error_message=str(e))
+                searches = []
 
-            # Generate pitch cards
-            generator = PitchCardGenerator(config)
-            await generator.generate_and_save(
-                state.storage,
-                all_spikes,
-                searches,
-                signals,
-                markets,
-            )
-            await state.health_monitor.update_module_health(
-                "pitch_cards", True, len(markets) * 6
-            )
+            # --- Module 3: Style Signals ---
+            try:
+                logger.info("trendjack_refresh_module_start", module="style_signals")
+                style_connector = StyleSignalsConnector(config)
+                signals = await style_connector.fetch_signals(markets)
+                await state.storage.save_style_signals(signals)
+
+                await state.health_monitor.update_module_health(
+                    "style_signals", True, len(signals)
+                )
+                result["modules"]["style_signals"] = {
+                    "status": "ok",
+                    "fetched": len(signals),
+                    "saved": len(signals),
+                    "by_source": {},
+                }
+                # Count by source
+                for signal in signals:
+                    src = signal.source
+                    result["modules"]["style_signals"]["by_source"][src] = \
+                        result["modules"]["style_signals"]["by_source"].get(src, 0) + 1
+                logger.info("trendjack_refresh_module_complete", module="style_signals", count=len(signals))
+            except Exception as e:
+                error_msg = f"style_signals: {str(e)}"
+                result["modules"]["style_signals"] = {"status": "error", "error": str(e)}
+                result["errors"].append(error_msg)
+                logger.error("trendjack_module_error", module="style_signals", error=str(e))
+                await state.health_monitor.update_module_health("style_signals", False, error_message=str(e))
+                signals = []
+
+            # --- Module 4: Pitch Cards ---
+            try:
+                logger.info("trendjack_refresh_module_start", module="pitch_cards")
+                generator = PitchCardGenerator(config)
+                cards = await generator.generate_and_save(
+                    state.storage,
+                    all_spikes,
+                    searches,
+                    signals,
+                    markets,
+                )
+                card_count = len(cards) if cards else len(markets) * 6
+
+                await state.health_monitor.update_module_health(
+                    "pitch_cards", True, card_count
+                )
+                result["modules"]["pitch_cards"] = {
+                    "status": "ok",
+                    "generated": card_count,
+                    "by_market": {m: len([c for c in (cards or []) if c.market == m]) for m in markets} if cards else {},
+                }
+                logger.info("trendjack_refresh_module_complete", module="pitch_cards", count=card_count)
+            except Exception as e:
+                error_msg = f"pitch_cards: {str(e)}"
+                result["modules"]["pitch_cards"] = {"status": "error", "error": str(e)}
+                result["errors"].append(error_msg)
+                logger.error("trendjack_module_error", module="pitch_cards", error=str(e))
+                await state.health_monitor.update_module_health("pitch_cards", False, error_message=str(e))
+
+            # Set overall status
+            if result["errors"]:
+                result["status"] = "partial" if any(m.get("status") == "ok" for m in result["modules"].values()) else "failed"
 
             logger.info(
                 "trendjack_refresh_complete",
-                spikes=len(all_spikes),
-                culture=len(searches),
-                style=len(signals),
+                status=result["status"],
+                artist_spikes=result["modules"].get("artist_spikes", {}).get("fetched", 0),
+                culture_searches=result["modules"].get("culture_searches", {}).get("fetched", 0),
+                style_signals=result["modules"].get("style_signals", {}).get("fetched", 0),
+                pitch_cards=result["modules"].get("pitch_cards", {}).get("generated", 0),
+                errors=len(result["errors"]),
             )
 
         except Exception as e:
-            logger.error("trendjack_refresh_error", error=str(e))
-            # Update health as failed
-            await state.health_monitor.update_module_health(
-                "artist_spikes", False, error_message=str(e)
-            )
+            result["status"] = "failed"
+            result["errors"].append(f"Unexpected error: {str(e)}")
+            logger.error("trendjack_refresh_fatal_error", error=str(e))
+
+        finally:
+            # Update status tracking
+            _refresh_status["is_running"] = False
+            _refresh_status["completed_at"] = datetime.utcnow()
+            _refresh_status["last_result"] = result
+
+    # ==================== Unified Refresh Endpoint ====================
+
+    @app.post("/api/refresh")
+    async def unified_refresh(
+        secret: str = "",
+        modules: str = "all",
+        markets: str = "NG,KE,GH,ZA",
+    ):
+        """
+        Unified refresh endpoint for GitHub Actions scheduler.
+
+        Args:
+            secret: API secret for authentication (env: PIPELINE_SECRET)
+            modules: Comma-separated modules to refresh: all, pipeline, trendjack
+            markets: Comma-separated market codes (default: NG,KE,GH,ZA)
+
+        Returns:
+            Status and module counts for each refreshed module.
+        """
+        expected_secret = os.environ.get("PIPELINE_SECRET", "spotify-trends-2024")
+
+        if secret != expected_secret:
+            raise HTTPException(status_code=403, detail="Invalid secret")
+
+        market_list = [m.strip().upper() for m in markets.split(",") if m.strip()]
+        module_list = [m.strip().lower() for m in modules.split(",") if m.strip()]
+
+        result = {
+            "status": "success",
+            "started_at": datetime.utcnow().isoformat(),
+            "markets": market_list,
+            "modules_requested": module_list,
+            "results": {},
+        }
+
+        # Run pipeline if requested
+        if "all" in module_list or "pipeline" in module_list:
+            try:
+                from pipeline import PipelineOrchestrator
+
+                logger.info("unified_refresh_pipeline_start", markets=market_list)
+                orchestrator = PipelineOrchestrator(app.state.config)
+                orchestrator.storage = app.state.storage
+                pipeline_result = await orchestrator.run()
+
+                result["results"]["pipeline"] = {
+                    "status": "ok",
+                    "trends_collected": pipeline_result.get("collected", 0) if isinstance(pipeline_result, dict) else 0,
+                }
+                logger.info("unified_refresh_pipeline_complete", result=result["results"]["pipeline"])
+            except Exception as e:
+                result["results"]["pipeline"] = {"status": "error", "error": str(e)}
+                logger.error("unified_refresh_pipeline_error", error=str(e))
+
+        # Run trendjack if requested
+        if "all" in module_list or "trendjack" in module_list:
+            try:
+                from connectors import ArtistSpikesConnector, CultureSearchConnector, StyleSignalsConnector
+                from pipeline.pitch_generator import PitchCardGenerator
+
+                logger.info("unified_refresh_trendjack_start", markets=market_list)
+                config = app.state.config
+                trendjack_result = {"artist_spikes": 0, "culture_searches": 0, "style_signals": 0, "pitch_cards": 0}
+
+                # Artist spikes
+                spikes_connector = ArtistSpikesConnector(config)
+                all_spikes = []
+                for window in ["24h", "7d"]:
+                    spikes = await spikes_connector.fetch_spikes(market_list, window)
+                    all_spikes.extend(spikes)
+                    await app.state.storage.save_artist_spikes(spikes)
+                trendjack_result["artist_spikes"] = len(all_spikes)
+                await app.state.health_monitor.update_module_health("artist_spikes", True, len(all_spikes))
+
+                # Culture searches
+                culture_connector = CultureSearchConnector(config)
+                searches = await culture_connector.fetch_searches(market_list)
+                await app.state.storage.save_culture_searches(searches)
+                trendjack_result["culture_searches"] = len(searches)
+                await app.state.health_monitor.update_module_health("culture_searches", True, len(searches))
+
+                # Style signals
+                style_connector = StyleSignalsConnector(config)
+                signals = await style_connector.fetch_signals(market_list)
+                await app.state.storage.save_style_signals(signals)
+                trendjack_result["style_signals"] = len(signals)
+                await app.state.health_monitor.update_module_health("style_signals", True, len(signals))
+
+                # Pitch cards
+                generator = PitchCardGenerator(config)
+                cards = await generator.generate_and_save(
+                    app.state.storage, all_spikes, searches, signals, market_list
+                )
+                trendjack_result["pitch_cards"] = len(cards) if cards else 0
+                await app.state.health_monitor.update_module_health("pitch_cards", True, trendjack_result["pitch_cards"])
+
+                result["results"]["trendjack"] = {"status": "ok", **trendjack_result}
+                logger.info("unified_refresh_trendjack_complete", result=trendjack_result)
+            except Exception as e:
+                result["results"]["trendjack"] = {"status": "error", "error": str(e)}
+                logger.error("unified_refresh_trendjack_error", error=str(e))
+
+        # Set overall status
+        if any(r.get("status") == "error" for r in result["results"].values()):
+            result["status"] = "partial" if any(r.get("status") == "ok" for r in result["results"].values()) else "failed"
+
+        result["completed_at"] = datetime.utcnow().isoformat()
+        logger.info("unified_refresh_complete", status=result["status"], results=result["results"])
+
+        return result
 
     # ==================== Filter Options ====================
 
