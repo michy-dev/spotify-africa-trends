@@ -106,12 +106,13 @@ Enhanced trend-jack intelligence modules for Comms teams in Nigeria, Kenya, Ghan
 | Connector | File | Purpose |
 |-----------|------|---------|
 | Artist Spikes | `connectors/artist_spikes.py` | Detects artist search interest spikes with sparkline data and "why spiking" bullets |
-| Culture Search | `connectors/culture_search.py` | Rising culture terms with sensitivity tags (Music/Fashion/Sport/Film-TV/Meme/Celebrity/Politics) |
 | Style Signals | `connectors/style_signals.py` | RSS aggregation from streetwear/fashion sources (Highsnobiety, Hypebeast, Nataal, etc.) |
+
+Note: Culture Search connector (`connectors/culture_search.py`) was removed due to Google Trends rate limiting.
 
 ### Pitch Card Generator
 
-`pipeline/pitch_generator.py` combines signals from all three modules to generate actionable pitch cards with:
+`pipeline/pitch_generator.py` combines signals from Artist Spikes and Style Signals to generate actionable pitch cards with:
 - **Hook**: Headline-style opener
 - **Why Now**: Supporting signals
 - **Spotify Angle**: FTR/playlist/podcast/editorial/creator angle
@@ -124,8 +125,6 @@ Enhanced trend-jack intelligence modules for Comms teams in Nigeria, Kenya, Ghan
 | Endpoint | Description |
 |----------|-------------|
 | `GET /api/artist-spikes/{market}?time_window=24h\|7d` | Artist search spikes |
-| `GET /api/culture-searches/{market}?sensitivity_tag=` | Rising culture searches |
-| `GET /api/culture-searches/regional/overlaps` | Cross-market overlaps |
 | `GET /api/style-signals?country_relevance=&max_risk=` | Streetwear/fashion signals |
 | `GET /api/pitch-cards/{market}` | Generated pitch cards |
 | `GET /api/data-health` | Module health status |

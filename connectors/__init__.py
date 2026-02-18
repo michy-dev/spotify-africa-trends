@@ -16,8 +16,8 @@ from .tiktok import TikTokConnector
 from .instagram import InstagramConnector
 from .spotify_internal import SpotifyInternalConnector
 from .artist_spikes import ArtistSpikesConnector
-from .culture_search import CultureSearchConnector
 from .style_signals import StyleSignalsConnector
+# CultureSearchConnector removed - Google Trends rate limiting prevents population
 
 __all__ = [
     "BaseConnector",
@@ -33,7 +33,6 @@ __all__ = [
     "InstagramConnector",
     "SpotifyInternalConnector",
     "ArtistSpikesConnector",
-    "CultureSearchConnector",
     "StyleSignalsConnector",
 ]
 
@@ -49,7 +48,6 @@ CONNECTOR_REGISTRY = {
     "instagram": InstagramConnector,
     "spotify_internal": SpotifyInternalConnector,
     "artist_spikes": ArtistSpikesConnector,
-    "culture_search": CultureSearchConnector,
     "style_signals": StyleSignalsConnector,
 }
 

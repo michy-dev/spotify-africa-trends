@@ -516,38 +516,6 @@ def create_app() -> FastAPI:
             "last_updated": last_updated,
         }
 
-    @app.get("/api/culture-searches/{market}")
-    async def get_culture_searches(
-        market: str,
-        sensitivity_tag: Optional[str] = None,
-        limit: int = Query(10, ge=1, le=50),
-    ):
-        """Get rising culture searches for a market."""
-        searches = await app.state.storage.get_culture_searches(
-            market=market.upper(),
-            sensitivity_tag=sensitivity_tag,
-            limit=limit,
-        )
-        health = await app.state.storage.get_module_health("culture_searches")
-        last_updated = health.last_success.isoformat() if health and health.last_success else None
-
-        return {
-            "market": market.upper(),
-            "sensitivity_tag": sensitivity_tag,
-            "searches": [s.to_dict() for s in searches],
-            "count": len(searches),
-            "last_updated": last_updated,
-        }
-
-    @app.get("/api/culture-searches/regional/overlaps")
-    async def get_culture_overlaps():
-        """Get cross-market culture search overlaps."""
-        overlaps = await app.state.storage.get_culture_overlaps()
-        return {
-            "overlaps": overlaps,
-            "count": len(overlaps),
-        }
-
     @app.get("/api/style-signals")
     async def get_style_signals(
         country_relevance: Optional[str] = None,
@@ -684,7 +652,7 @@ def create_app() -> FastAPI:
 
     async def run_trendjack_refresh(state):
         """Background trend-jack refresh with detailed tracking."""
-        from connectors import ArtistSpikesConnector, CultureSearchConnector, StyleSignalsConnector
+        from connectors import ArtistSpikesConnector, StyleSignalsConnector
         from pipeline.pitch_generator import PitchCardGenerator
 
         result = {
@@ -728,32 +696,7 @@ def create_app() -> FastAPI:
                 await state.health_monitor.update_module_health("artist_spikes", False, error_message=str(e))
                 all_spikes = []
 
-            # --- Module 2: Culture Searches ---
-            try:
-                logger.info("trendjack_refresh_module_start", module="culture_searches")
-                culture_connector = CultureSearchConnector(config)
-                searches = await culture_connector.fetch_searches(markets)
-                await state.storage.save_culture_searches(searches)
-
-                await state.health_monitor.update_module_health(
-                    "culture_searches", True, len(searches)
-                )
-                result["modules"]["culture_searches"] = {
-                    "status": "ok",
-                    "fetched": len(searches),
-                    "saved": len(searches),
-                    "by_market": {m: len([s for s in searches if s.market == m]) for m in markets},
-                }
-                logger.info("trendjack_refresh_module_complete", module="culture_searches", count=len(searches))
-            except Exception as e:
-                error_msg = f"culture_searches: {str(e)}"
-                result["modules"]["culture_searches"] = {"status": "error", "error": str(e)}
-                result["errors"].append(error_msg)
-                logger.error("trendjack_module_error", module="culture_searches", error=str(e))
-                await state.health_monitor.update_module_health("culture_searches", False, error_message=str(e))
-                searches = []
-
-            # --- Module 3: Style Signals ---
+            # --- Module 2: Style Signals ---
             try:
                 logger.info("trendjack_refresh_module_start", module="style_signals")
                 style_connector = StyleSignalsConnector(config)
@@ -791,7 +734,7 @@ def create_app() -> FastAPI:
                 card_count = await generator.generate_and_save(
                     state.storage,
                     all_spikes,
-                    searches,
+                    [],  # culture searches removed (rate limited)
                     signals,
                     markets,
                 )
@@ -819,7 +762,6 @@ def create_app() -> FastAPI:
                 "trendjack_refresh_complete",
                 status=result["status"],
                 artist_spikes=result["modules"].get("artist_spikes", {}).get("fetched", 0),
-                culture_searches=result["modules"].get("culture_searches", {}).get("fetched", 0),
                 style_signals=result["modules"].get("style_signals", {}).get("fetched", 0),
                 pitch_cards=result["modules"].get("pitch_cards", {}).get("generated", 0),
                 errors=len(result["errors"]),
@@ -893,12 +835,12 @@ def create_app() -> FastAPI:
         # Run trendjack if requested
         if "all" in module_list or "trendjack" in module_list:
             try:
-                from connectors import ArtistSpikesConnector, CultureSearchConnector, StyleSignalsConnector
+                from connectors import ArtistSpikesConnector, StyleSignalsConnector
                 from pipeline.pitch_generator import PitchCardGenerator
 
                 logger.info("unified_refresh_trendjack_start", markets=market_list)
                 config = app.state.config
-                trendjack_result = {"artist_spikes": 0, "culture_searches": 0, "style_signals": 0, "pitch_cards": 0}
+                trendjack_result = {"artist_spikes": 0, "style_signals": 0, "pitch_cards": 0}
 
                 # Artist spikes
                 spikes_connector = ArtistSpikesConnector(config)
@@ -910,13 +852,6 @@ def create_app() -> FastAPI:
                 trendjack_result["artist_spikes"] = len(all_spikes)
                 await app.state.health_monitor.update_module_health("artist_spikes", True, len(all_spikes))
 
-                # Culture searches
-                culture_connector = CultureSearchConnector(config)
-                searches = await culture_connector.fetch_searches(market_list)
-                await app.state.storage.save_culture_searches(searches)
-                trendjack_result["culture_searches"] = len(searches)
-                await app.state.health_monitor.update_module_health("culture_searches", True, len(searches))
-
                 # Style signals
                 style_connector = StyleSignalsConnector(config)
                 signals = await style_connector.fetch_signals(market_list)
@@ -927,7 +862,7 @@ def create_app() -> FastAPI:
                 # Pitch cards - generate_and_save returns count (int)
                 generator = PitchCardGenerator(config)
                 card_count = await generator.generate_and_save(
-                    app.state.storage, all_spikes, searches, signals, market_list
+                    app.state.storage, all_spikes, [], signals, market_list  # culture searches removed
                 )
                 trendjack_result["pitch_cards"] = card_count
                 await app.state.health_monitor.update_module_health("pitch_cards", True, card_count)
