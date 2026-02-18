@@ -787,14 +787,14 @@ def create_app() -> FastAPI:
             try:
                 logger.info("trendjack_refresh_module_start", module="pitch_cards")
                 generator = PitchCardGenerator(config)
-                cards = await generator.generate_and_save(
+                # generate_and_save returns count (int), not list
+                card_count = await generator.generate_and_save(
                     state.storage,
                     all_spikes,
                     searches,
                     signals,
                     markets,
                 )
-                card_count = len(cards) if cards else len(markets) * 6
 
                 await state.health_monitor.update_module_health(
                     "pitch_cards", True, card_count
@@ -925,13 +925,13 @@ def create_app() -> FastAPI:
                 trendjack_result["style_signals"] = len(signals)
                 await app.state.health_monitor.update_module_health("style_signals", True, len(signals))
 
-                # Pitch cards
+                # Pitch cards - generate_and_save returns count (int)
                 generator = PitchCardGenerator(config)
-                cards = await generator.generate_and_save(
+                card_count = await generator.generate_and_save(
                     app.state.storage, all_spikes, searches, signals, market_list
                 )
-                trendjack_result["pitch_cards"] = len(cards) if cards else 0
-                await app.state.health_monitor.update_module_health("pitch_cards", True, trendjack_result["pitch_cards"])
+                trendjack_result["pitch_cards"] = card_count
+                await app.state.health_monitor.update_module_health("pitch_cards", True, card_count)
 
                 result["results"]["trendjack"] = {"status": "ok", **trendjack_result}
                 logger.info("unified_refresh_trendjack_complete", result=trendjack_result)
