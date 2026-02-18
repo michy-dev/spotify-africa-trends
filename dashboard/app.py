@@ -802,7 +802,6 @@ def create_app() -> FastAPI:
                 result["modules"]["pitch_cards"] = {
                     "status": "ok",
                     "generated": card_count,
-                    "by_market": {m: len([c for c in (cards or []) if c.market == m]) for m in markets} if cards else {},
                 }
                 logger.info("trendjack_refresh_module_complete", module="pitch_cards", count=card_count)
             except Exception as e:
