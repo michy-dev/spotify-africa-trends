@@ -817,15 +817,23 @@ def create_app() -> FastAPI:
         if "all" in module_list or "pipeline" in module_list:
             try:
                 from pipeline import PipelineOrchestrator
+                from storage.base import TrendRecord
 
                 logger.info("unified_refresh_pipeline_start", markets=market_list)
                 orchestrator = PipelineOrchestrator(app.state.config)
-                orchestrator.storage = app.state.storage
-                pipeline_result = await orchestrator.run()
+                pipeline_result = await orchestrator.run_full_pipeline(markets=market_list)
+
+                # Save results to storage if successful
+                summaries = pipeline_result.get("summaries", [])
+                if pipeline_result.get("success") and summaries:
+                    records = [TrendRecord.from_summary(s) for s in summaries]
+                    await app.state.storage.save_trends(records)
+                    await app.state.storage.save_pipeline_run(pipeline_result.get("metrics", {}))
 
                 result["results"]["pipeline"] = {
-                    "status": "ok",
-                    "trends_collected": pipeline_result.get("collected", 0) if isinstance(pipeline_result, dict) else 0,
+                    "status": "ok" if pipeline_result.get("success") else "error",
+                    "trends_collected": len(summaries),
+                    "metrics": pipeline_result.get("stats", {}),
                 }
                 logger.info("unified_refresh_pipeline_complete", result=result["results"]["pipeline"])
             except Exception as e:
